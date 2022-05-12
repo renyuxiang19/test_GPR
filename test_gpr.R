@@ -1,4 +1,3 @@
-install.packages("tidyverse")
 library(tidyverse)
 
 # Training data
@@ -39,12 +38,12 @@ kernel_e <- function(s1,s2){
 }
 
 # Calculate covariance matrices
-make_cov <- function(s1, s2){
+make_cov <- function(s1, s2, kernel){
   len_s1 <- length(s1)
   len_s2 <- length(s2)
   cov_m <- matrix(nrow = len_s1, ncol = len_s2)
   for (i in 1:len_s2) {
-    cov_m[,i] <- map_dbl(s1, function(x) kernel_m(s1=x, s2=s2[i]) )
+    cov_m[,i] <- map_dbl(s1, function(x) kernel(s1=x, s2=s2[i]) )
   }
   return(cov_m)
 }
@@ -52,8 +51,8 @@ make_cov <- function(s1, s2){
 # Predict
 test_s <- seq(0, 1, length= 40)
 
-k <- make_cov(s1=s, s2=s)
-k_star <- make_cov(s1=test_s, s2=s)
+k <- make_cov(s1=s, s2=s, kernel = kernel_g)
+k_star <- make_cov(s1=test_s, s2=s, kernel = kernel_g)
  # Add noise 
 noise <- rnorm(length(k_star),mean=0,sd=1) %>% matrix(ncol = ncol(k_star), nrow = nrow(k_star))
 r <- cov(noise)
