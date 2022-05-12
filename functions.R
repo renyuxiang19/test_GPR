@@ -23,27 +23,27 @@ read_MAIC <- function(file_name){
 }
 
 # Kernel functions
-kernel_g <- function(s1, s2, sof, sd){
-  k <- (sd^2) * exp(-pi* (abs(s1-s2)/sof)^2) 
+kernel_g <- function(s1, s2, sof, sd0){
+  k <- (sd0^2) * exp(-pi* (abs(s1-s2)/sof)^2) 
   return(k)
 }
 
 kernel_m <- function(s1, s2,sof, sd){
-  k <- (sd^2) * exp(-2* (abs(s1-s2)/sof))
+  k <- (sd0^2) * exp(-2* (abs(s1-s2)/sof))
   return(k)
 }
 
-kernel_b <- function(s1, s2, sof, sd){
+kernel_b <- function(s1, s2, sof, sd0){
   dif <- abs(s1-s2)
   if (dif < sof) {
-    k <- (sd^2) * (1-(dif/sof)) 
+    k <- (sd0^2) * (1-(dif/sof)) 
   }else{
     k <- 0
   }
   return(k)
 }
 
-kernel_e <- function(s1,s2){
+kernel_e <- function(s1, s2){
   k <- exp(-0.5*abs(s1-s2)^2)
   return(k)
 }
@@ -60,10 +60,10 @@ make_cov <- function(s1, s2, kernel, ...){
 }
 
 # GPR functions 
-gpr_1d <- function(x, y, num, kernel, sd_noise=1 ,...){
+gpr_1d <- function(x, y, num=100, kernel, sd_noise=1, ...){
   # num : number of test data
-  # x, y: training data
-  # kernel : kernel function
+  # x, y: training data, which should be vectors with same length.
+  # kernel : kernel function.
   if(length(x)!=length(y)){
     stop("The lengths of 'x' and 'y' should be same")
   }else{
@@ -74,7 +74,7 @@ gpr_1d <- function(x, y, num, kernel, sd_noise=1 ,...){
   k <- make_cov(s1=x, s2=x, kernel = kernel, ...)
   k_star <- make_cov(s1=test_x, s2=x, kernel = kernel, ...)
   # Add noise 
-  noise <- rnorm(length(k_star),mean=0,sd=sd_noise) %>% matrix(ncol = ncol(k_star), nrow = nrow(k_star))
+  noise <- rnorm(length(k_star),mean=0, sd=sd_noise) %>% matrix(ncol = ncol(k_star), nrow = nrow(k_star))
   r <- cov(noise)
   # predict y
   predict_y <- k_star %*% solve(k+r) %*% y
@@ -82,3 +82,4 @@ gpr_1d <- function(x, y, num, kernel, sd_noise=1 ,...){
   ans <- data.frame(x = test_x, y = predict_y)
   return(ans)
 }
+
