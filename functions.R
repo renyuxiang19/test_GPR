@@ -78,7 +78,6 @@ gpr_1d <- function(x, y, num=100, kernel, sd_noise=1, ...){
   r <- cov(noise)
   # predict y
   predict_y <- k_star %*% solve(k+r) %*% y
-  
   ans <- data.frame(x = test_x, y = predict_y)
   return(ans)
 }

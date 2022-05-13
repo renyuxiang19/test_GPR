@@ -62,5 +62,3 @@ z_predict <- k_star %*% solve(k+r) %*% z
 # Plot predicting
 lines(test_s,z_predict)
 
-
-make_cov(s1=s, s2=s, kernel = kernel_g, sof = 0.5, sd = 2)
