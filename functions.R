@@ -1,3 +1,5 @@
+library(rdist)
+library(tidyverse)
 # Read_data
 read_MAIC <- function(file_name){
   rawdat<-read.csv(file = file_name) #カンマ区切りのファイルを読み込む(他の書式はMAICの入力fileと同じ)　

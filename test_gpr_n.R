@@ -9,10 +9,10 @@ training$z <- split(n_sws$Z, n_sws$X)
 training$nsws <- split(n_sws$Nsws, n_sws$X)
 predi <- list()
 for (i in seq_along(x)) {
-  predi[[i]] <- gpr_1d(x = training$z[[i]], y = training$nsws[[i]], kernel = kernel_g, sof = 5, sd0 = 5)
+  predi[[i]] <- gpr_1d(x = training$z[[i]], y = training$nsws[[i]], kernel = kernel_g, sof = 1, sd0 = 5)
 }
 
-i <- 9
+i <- 4
 par(mar=c(5,4,1,1)+0.1)
 plot(training$nsws[[i]],training$z[[i]],
      ylim = rev(range(training$z[[i]])), pch=19, type = "l", lty = 1,)
