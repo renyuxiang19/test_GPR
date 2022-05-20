@@ -58,16 +58,13 @@ d_v <- function(sv1,sv2){
   abs(sv1-sv2)
 }
 
-k_w <- function(d, nu, sof){
-  frac <- sqrt(pi)*gamma(nu+0.5)*d/(gamma(nu)*sof)
-  ans <- (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
-  return(ans)
-}
-
-kernel_wm <- function(shi1,shi2,shj1=0,shj2=0,sv1,sv2, nu_h, sof_h, nu_v, sof_v){
-  dh <- d_h(shi1, shi2, shj1, shj2)
-  dv <- d_v(sv1, sv2)
-  ans <- k_w(dh, nu_h, sof_h) * k_w(dv, nu_v, sof_v)
+kernel_wm <- function(d, nu, sof, sd){
+  if (d == 0) {
+    ans <- sd
+  }else{
+    frac <- sqrt(pi)*gamma(nu+0.5)*d/(gamma(nu)*sof)
+    ans <- (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
+  }
   return(ans)
 }
 
