@@ -9,10 +9,11 @@ plot(s,z,
      ylim = c(0,8), pch=19)
 
 # Kernel functions
-sof <- 5
+sof <- 0.5
 sd <- 5
+nu0 <- 0.5
 
-kernel_g <- function(d){
+kernel_g <- function(d,sof,sd){
   k <- (sd^2) * exp(-pi* (d/sof)^2) 
   return(k)
 }
@@ -37,13 +38,23 @@ kernel_e <- function(d){
   return(k)
 }
 
+kernel_wm <- function(d, nu){
+  if (d == 0) {
+    covariance <- sd
+  }else{
+    frac <- sqrt(pi)*gamma(nu+0.5)*d/(gamma(nu)*sof)
+    covariance <- (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
+  }
+  return(covariance)
+}
 # Calculate covariance matrices
 make_cov <- function(s1, s2, kernel){
-  distances <- rdist::cdist(s2,s1,metric = "manhattan")
+  distances <- rdist::cdist(s1,s2,metric = "manhattan")
   cov_m <- switch (kernel,
     Gaussian = kernel_g(distances),
     Markovian = kernel_m(distances),
-    Binary = kernel_b(distances)
+    Binary = kernel_b(distances),
+    Whittle = modify(distances, kernel_wm, nu = nu0)
   )
   return(cov_m)
 }
@@ -51,8 +62,8 @@ make_cov <- function(s1, s2, kernel){
 # Predict
 test_s <- seq(0, 1, length= 40)
 
-k <- make_cov(s1=s, s2=s, kernel = "Gaussian")
-k_star <- make_cov(s1=s, s2=test_s, kernel = "Gaussian")
+k <- make_cov(s1=s, s2=s, kernel = "Markovian")
+k_star <- make_cov(s1=test_s, s2=s, kernel = "Markovian")
  # Add noise 
 noise <- rnorm(length(k_star),mean=0,sd=1) %>% matrix(ncol = ncol(k_star), nrow = nrow(k_star))
 r <- cov(noise)

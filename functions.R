@@ -25,49 +25,41 @@ read_MAIC <- function(file_name){
 }
 
 # Kernel functions
-kernel_g <- function(s1, s2, sof, sd0){
-  k <- (sd0^2) * exp(-pi* (abs(s1-s2)/sof)^2) 
+kernel_g <- function(d,sof,sd){
+  k <- (sd^2) * exp(-pi* (d/sof)^2) 
   return(k)
 }
 
-kernel_m <- function(s1, s2,sof, sd){
-  k <- (sd0^2) * exp(-2* (abs(s1-s2)/sof))
+kernel_m <- function(d){
+  k <- (sd^2) * exp(-2* (d/sof))
   return(k)
 }
 
-kernel_b <- function(s1, s2, sof, sd0){
-  dif <- abs(s1-s2)
+kernel_b <- function(d){
+  dif <- d
   if (dif < sof) {
-    k <- (sd0^2) * (1-(dif/sof)) 
+    k <- (sd^2) * (1-(dif/sof)) 
   }else{
     k <- 0
   }
   return(k)
 }
 
-kernel_e <- function(s1, s2){
-  k <- exp(-0.5*abs(s1-s2)^2)
+kernel_e <- function(d){
+  k <- exp(-0.5*d^2)
   return(k)
 }
+
 # 3D Whittle-Matern kernel 
-d_h <- function(shi1, shi2, shj1, shj2){
-  sqrt((shi1-shi2)^2+(shj1-shj2)^2)
-}
-
-d_v <- function(sv1,sv2){
-  abs(sv1-sv2)
-}
-
 kernel_wm <- function(d, nu, sof, sd){
   if (d == 0) {
-    ans <- sd
+    covariance <- sd
   }else{
     frac <- sqrt(pi)*gamma(nu+0.5)*d/(gamma(nu)*sof)
-    ans <- (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
+    covariance <- (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
   }
-  return(ans)
+  return(covariance)
 }
-
 # Calculate covariance matrices
 make_cov <- function(s1, s2, kernel, ...){
   len_s1 <- length(s1)
