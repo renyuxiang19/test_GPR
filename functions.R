@@ -61,7 +61,8 @@ kernel_wm <- function(d, nu, sof, sd){
   }
   return(covariance)
 }
-# Calculate covariance matrices
+
+# Calculate covariance matrix
 # 3D
 make_cov <- function(m1, m2, kernel, ... ){
   kernel <- match.fun(kernel)
