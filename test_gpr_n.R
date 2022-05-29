@@ -10,6 +10,9 @@ sof_h <- 5
 sof_v <- 5
 sd <- 2
 nu <- 1.25
+noise <- TRUE
+
+### Unimportant parameter
 mesh_size_v <- 0.1
 
 ## read 2D data.
@@ -58,7 +61,7 @@ make_k21 <- function(){
   return(k21)
 }
 k21 <- make_k21()
-k11 <- make_k11( noise = T )
+k11 <- make_k11( noise = noise )
 
 ## Predict
 
