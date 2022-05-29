@@ -1,8 +1,7 @@
+# Test GPR with simple 3D data.
 library(tidyverse)
 library(rdist)
-library(sloop)
-library(plotly)
-source("functions.r")
+
 # training data
 v1 <- c(1,3,4,6,7)
 v2 <- c(2,4,6,5,3)
@@ -23,20 +22,18 @@ train_pic <- ggplot(data=training) +
         facet_wrap(~x)
 train_pic
 #
-make_cov_3D <- function(m1, m2, sof_h=5, sof_v=5, sd0 = 5, nu = 50){
+make_cov_3D <- function(m1, m2, sof_h=5, sof_v=5, sd0 = 5){
   # Create distance matrices
   d_h <- rdist::cdist(m1[c("x","y")],m2[c("x","y")]) 
   d_v <- rdist::cdist(m1$z,m2$z)
   # Calculate covariance matrices in two directions.
-  k_h <- modify(d_h, kernel_wm, sof = sof_h, sd = sd0, nu = nu)
-  k_v <- modify(d_v, kernel_wm, sof = sof_v, sd = sd0, nu = nu)
+  k_h <- modify(d_h, kernel_g, sof = sof_h, sd = sd0)
+  k_v <- modify(d_v, kernel_g, sof = sof_v, sd = sd0)
   # Calculate the 3D covariance matrix
   k <- k_h * k_v
   return(k)
 }
 #
-k_h <- make_cov(m1 = training[c("x","y")], m2 = training[c("x","y")], kernel = kernel_wm, sof = 5, sd = 5, nu = 50)
-k_v <- make_cov(m1 = training["z"], m2 = training["z"], kernel = kernel_wm, sof = 5, sd = 5, nu = 50)
 
 k11 <- make_cov_3D(m1 = training, m2 = training)
 k21 <- make_cov_3D(m1 = testing, m2 = training)

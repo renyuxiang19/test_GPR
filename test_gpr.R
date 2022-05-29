@@ -1,3 +1,4 @@
+# Test GPR with simple 2D data.
 library(tidyverse)
 library(rdist)
 # Training data
@@ -13,7 +14,7 @@ sof <- 0.5
 sd <- 5
 nu0 <- 0.5
 
-kernel_g <- function(d,sof,sd){
+kernel_g <- function(d){
   k <- (sd^2) * exp(-pi* (d/sof)^2) 
   return(k)
 }
@@ -62,8 +63,8 @@ make_cov <- function(s1, s2, kernel){
 # Predict
 test_s <- seq(0, 1, length= 40)
 
-k <- make_cov(s1=s, s2=s, kernel = "Markovian")
-k_star <- make_cov(s1=test_s, s2=s, kernel = "Markovian")
+k <- make_cov(s1=s, s2=s, kernel = "Gaussian")
+k_star <- make_cov(s1=test_s, s2=s, kernel = "Gaussian")
  # Add noise 
 noise <- rnorm(length(k_star),mean=0,sd=1) %>% matrix(ncol = ncol(k_star), nrow = nrow(k_star))
 r <- cov(noise)
