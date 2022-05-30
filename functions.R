@@ -65,11 +65,11 @@ kernel_wm <- function(d, nu, sof, sd){
 # Calculate covariance matrix
 # 3D
 make_cov <- function(m1, m2, kernel, ... ){
-  kernel <- match.fun(kernel)
   # "m1" and "m2" should be matrices or data.frames with same numbers of columns.
   #   e.g., if you want to calculate in two horizontal directions, the "m1" and "m1" should both have 2 columns.
   #   The first column in the both two matrices means one direction, and the second for another.
   ############################################################
+  kernel <- match.fun(kernel)
   # Check input data.
   if (ncol(m1) != ncol(m2)){ stop("Error: The number of columns of input matrices are not consistent.") }
   # Create distance matrices
