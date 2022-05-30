@@ -40,7 +40,6 @@ testing <- list(depth$x, depth$min_depth, depth$max_depth) |>
 
 ## Calculate cov matrix..
 make_k11 <- function(noise = TRUE){
-  ## Calculate cov matrix.
   k11_h <- make_cov(m1 = n_sws[c("x","y")], m2 = n_sws[c("x","y")],
                     kernel = kernel_fun, sof = sof_h, sd = sd)
   k11_v <- make_cov(m1 = n_sws["z"], m2 = n_sws["z"],
