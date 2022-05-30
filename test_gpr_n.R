@@ -1,13 +1,14 @@
 # Test GPR with real N-value data.
 # library(tidyverse)
 # library(rlang)
+library(MASS)
 source("functions.r")
 
 ## Parameters of GPR
 filename <- "kaminokoike_SWS.dat"
 kernel_fun <- "kernel_g"
-sof_h <- 5
-sof_v <- 5
+sof_h <- 10
+sof_v <- 6
 sd <- 2
 nu <- 1.25
 noise <- TRUE
@@ -46,8 +47,7 @@ make_k11 <- function(noise = TRUE){
                     kernel = kernel_fun, sof = sof_v, sd = sd)
   k11 <- k11_h * k11_v
   if (noise){
-    noise_sample <- rnorm(length(k21),mean=0,sd=1) |> matrix(ncol = ncol(k11), nrow = nrow(k11))
-    r <- cov(noise_sample)
+    r <- diag(nrow(k11))
     k11 <- k11 + r
   }
   return(k11)
@@ -64,9 +64,7 @@ k21 <- make_k21()
 k11 <- make_k11( noise = noise )
 
 ## Predict
-
-testing$nsws <- k21 %*% solve(k11) %*% n_sws$nsws
-
+testing$nsws <- k21 %*% ginv(k11) %*% n_sws$nsws
 
 ## plot predicting
 test_pic <- ggplot() +

@@ -1,4 +1,3 @@
-# Test GPR with simple 2D data.
 library(tidyverse)
 library(rdist)
 # Training data
@@ -69,7 +68,7 @@ k_star <- make_cov(s1=test_s, s2=s, kernel = "Gaussian")
 noise <- rnorm(length(k_star),mean=0,sd=1) %>% matrix(ncol = ncol(k_star), nrow = nrow(k_star))
 r <- cov(noise)
 
-z_predict <- k_star %*% solve(k+r) %*% z
+z_predict <- k_star %*% solve(k) %*% z
 
 # Plot predicting
 lines(test_s,z_predict)
