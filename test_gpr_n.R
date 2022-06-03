@@ -7,12 +7,12 @@ source("functions.r")
 
 ## Parameters of GPR
 filename <- "kaminokoike_SWS.dat"
-kernel_fun <- "kernel_m"
-sof_h_t <- 5
-sof_v_t <- 8
-sd_t <- 5
-sof_h_r <- 10
-sof_v_r <- 10
+kernel_fun <- "kernel_g"
+sof_h_t <- 20
+sof_v_t <- 20
+sd_t <- 5 
+sof_h_r <- 0.01
+sof_v_r <- 0.01
 sd_r <- 10
 nu <- 1.25
 noise <- TRUE
@@ -58,6 +58,7 @@ make_k11 <- function(para){
   sd <- para[3]
   k11_h <- make_cov(m1 = n_sws[c("x","y")], m2 = n_sws[c("x","y")],
                     kernel = kernel_fun, sof = sof_h, sd = sd)
+  
   k11_v <- make_cov(m1 = n_sws["z"], m2 = n_sws["z"],
                     kernel = kernel_fun, sof = sof_v, sd = sd)
   k11 <- k11_h * k11_v
@@ -75,26 +76,29 @@ ln_likelihood <- function(para){
   m <- length(para)
   k11_t <- make_k11(para[1:3])
   k11_r <- make_k11(para[4:6])
+  k11_t <- k11_t/k11_t[1,1]
+  k11_r <- k11_r/k11_r[1,1]
+  k11 <- k11_t
   f <- -0.5 * t(z) %*% ginv(k11) %*% z - 
     0.5 * log(det(k11)) +
     0.5 * m * log(2 * pi)
   f <- -f
+  f <- as.numeric(f)
   return(f)
 }
 #### Optimize
-ln_likelihood(para)
 a <- optimx(para, ln_likelihood, method = "BFGS")
 ## Calculate k21
 make_k21 <- function(){
   k21_h <- make_cov(m1 = testing[c("x","y")], m2 = n_sws[c("x","y")],
-                    kernel = kernel_fun, sof = sof_h, sd = sd)
+                    kernel = kernel_fun, sof = sof_h_t, sd = sd_t)
   k21_v <- make_cov(m1 = testing["z"], m2 = n_sws["z"],
-                    kernel = kernel_fun, sof = sof_v, sd = sd)
+                    kernel = kernel_fun, sof = sof_v_t, sd = sd_t)
   k21 <- k21_h * k21_v
   return(k21)
 }
 k21 <- make_k21()
-
+k11 <- make_k11(para)
 #Add noise
 if (noise){
   r <- diag(nrow(k11))
