@@ -11,7 +11,8 @@ plot(s,z,
 # Kernel functions
 sof <- 0.5
 sd <- 5
-nu0 <- 0.5
+nu <- 100
+noise <- TRUE
 
 kernel_g <- function(d){
   k <- (sd^2) * exp(-pi* (d/sof)^2) 
@@ -38,7 +39,7 @@ kernel_e <- function(d){
   return(k)
 }
 
-kernel_wm <- function(d, nu){
+kernel_wm <- function(d){
   if (d == 0) {
     covariance <- sd
   }else{
@@ -54,7 +55,7 @@ make_cov <- function(s1, s2, kernel){
     Gaussian = kernel_g(distances),
     Markovian = kernel_m(distances),
     Binary = kernel_b(distances),
-    Whittle = modify(distances, kernel_wm, nu = nu0)
+    Whittle = purrr::modify(distances, kernel_wm)
   )
   return(cov_m)
 }
@@ -62,11 +63,14 @@ make_cov <- function(s1, s2, kernel){
 # Predict
 test_s <- seq(0, 1, length= 40)
 
-k <- make_cov(s1=s, s2=s, kernel = "Gaussian")
-k_star <- make_cov(s1=test_s, s2=s, kernel = "Gaussian")
+k <- make_cov(s1=s, s2=s, kernel = "Whittle")
+k_star <- make_cov(s1=test_s, s2=s, kernel = "Whittle")
  # Add noise 
-noise <- rnorm(length(k_star),mean=0,sd=1) %>% matrix(ncol = ncol(k_star), nrow = nrow(k_star))
-r <- cov(noise)
+if (noise){
+  r <- diag(nrow(k))
+  k <- k + r
+}
+
 
 z_predict <- k_star %*% solve(k) %*% z
 

@@ -8,12 +8,12 @@ source("functions.r")
 ## Parameters of GPR
 filename <- "kaminokoike_SWS.dat"
 kernel_fun <- "kernel_g"
-sof_h_t <- 20
-sof_v_t <- 20
-sd_t <- 5 
-sof_h_r <- 0.01
-sof_v_r <- 0.01
-sd_r <- 10
+sof_h_t <- 366.562 
+sof_v_t <- 3.242543 
+sd_t <- 4.999999 
+sof_h_r <- 0.01 
+sof_v_r <- -0.02005714 
+sd_r <- 9.999998 
 nu <- 1.25
 noise <- TRUE
 
@@ -78,7 +78,7 @@ ln_likelihood <- function(para){
   k11_r <- make_k11(para[4:6])
   k11_t <- k11_t/k11_t[1,1]
   k11_r <- k11_r/k11_r[1,1]
-  k11 <- k11_t
+  k11 <- k11_t + k11_r
   f <- -0.5 * t(z) %*% ginv(k11) %*% z - 
     0.5 * log(det(k11)) +
     0.5 * m * log(2 * pi)
@@ -115,3 +115,4 @@ test_pic <- ggplot() +
   scale_y_reverse()+
   facet_wrap(~x, nrow = 2)
 test_pic
+
