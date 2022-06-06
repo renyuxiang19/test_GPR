@@ -51,7 +51,7 @@ kernel_e <- function(d){
   return(k)
 }
 
-# 3D Whittle-Matern kernel 
+# Whittle-Matern kernel 
 kernel_wm <- function(d, nu, sof, sd){
   if (d == 0) {
     covariance <- sd
@@ -63,7 +63,6 @@ kernel_wm <- function(d, nu, sof, sd){
 }
 
 # Calculate covariance matrix
-# 3D
 make_cov <- function(m1, m2, kernel, ... ){
   # "m1" and "m2" should be matrices or data.frames with same numbers of columns.
   #   e.g., if you want to calculate in two horizontal directions, the "m1" and "m1" should both have 2 columns.

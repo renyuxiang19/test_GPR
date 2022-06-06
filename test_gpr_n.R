@@ -5,17 +5,19 @@ library(MASS)
 library(optimx)
 source("functions.r")
 
-## Parameters of GPR
+## (initial) Parameters of GPR.
 filename <- "kaminokoike_SWS.dat"
 kernel_fun <- "kernel_g"
-sof_h_t <- 366.562 
-sof_v_t <- 3.242543 
-sd_t <- 4.999999 
-sof_h_r <- 0.01 
-sof_v_r <- -0.02005714 
-sd_r <- 9.999998 
+sof_h_t <- 200   
+sof_v_t <- 2 
+sd_t <- 10
+sof_h_r <- 0.01
+sof_v_r <- 0.01
+sd_r <- 10 
 nu <- 1.25
 noise <- TRUE
+### Parameter vector.
+para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
 
 ### Unimportant parameter
 mesh_size_v <- 0.1
@@ -32,6 +34,8 @@ raw_pic <- ggplot(data=n_sws)+
   geom_line(mapping = aes(x=nsws,y=z),orientation = "y")+
   scale_y_reverse()+
   facet_wrap(~x, nrow = 2)
+print(raw_pic)
+writeLines("Plot the raw data.")
 
 ## Prepare testing data (mesh).
 depth <- n_sws |> 
@@ -47,35 +51,32 @@ testing <- list(depth$x, depth$min_depth, depth$max_depth) |>
 
 ## Calculate cov matrix.
 ### Using log-likelihood to optimize parameters
-#### Observation vector.
-z <- n_sws$nsws |> matrix()
-#### Parameter vector.
-para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
-#### K11 function.
-make_k11 <- function(para){
-  sof_h <- para[1]
-  sof_v <- para[2]
-  sd <- para[3]
-  k11_h <- make_cov(m1 = n_sws[c("x","y")], m2 = n_sws[c("x","y")],
+
+#### Create cov matrix K11 or K21.
+make_k <- function(par, cm1, cm2){
+  # "cm1" and "cm2" are coordinate matrices with "x", "y", "z" as their column name.
+  #   "x" and "y" are horizontal coordinate, "z" is depth.
+  # "par" is a numerical vector for kernel function.
+  sof_h <- par[1]
+  sof_v <- par[2]
+  sd <- par[3]
+  #
+  k21_h <- make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
                     kernel = kernel_fun, sof = sof_h, sd = sd)
-  
-  k11_v <- make_cov(m1 = n_sws["z"], m2 = n_sws["z"],
+  k21_v <- make_cov(m1 = cm1["z"], m2 = cm2["z"],
                     kernel = kernel_fun, sof = sof_v, sd = sd)
-  k11 <- k11_h * k11_v
-  return(k11)
+  k21 <- k21_h * k21_v
+  return(k21)
 }
+
 #### likelihood function.
 ln_likelihood <- function(para){
-  sof_h_t <- para[1]
-  sof_v_t <- para[2]
-  sd_t <- para[3]
-  sof_h_r <- para[4]
-  sof_v_r <- para[5]
-  sd_r <- para[6]
+  # Observation vector.
+  z <- n_sws$nsws |> matrix()
   #
   m <- length(para)
-  k11_t <- make_k11(para[1:3])
-  k11_r <- make_k11(para[4:6])
+  k11_t <- make_k(para[1:3], cm1 = n_sws, cm2 = n_sws)
+  k11_r <- make_k(para[4:6], cm1 = n_sws, cm2 = n_sws)
   k11_t <- k11_t/k11_t[1,1]
   k11_r <- k11_r/k11_r[1,1]
   k11 <- k11_t + k11_r
@@ -86,20 +87,23 @@ ln_likelihood <- function(para){
   f <- as.numeric(f)
   return(f)
 }
-#### Optimize
-a <- optimx(para, ln_likelihood, method = "BFGS")
-## Calculate k21
-make_k21 <- function(){
-  k21_h <- make_cov(m1 = testing[c("x","y")], m2 = n_sws[c("x","y")],
-                    kernel = kernel_fun, sof = sof_h_t, sd = sd_t)
-  k21_v <- make_cov(m1 = testing["z"], m2 = n_sws["z"],
-                    kernel = kernel_fun, sof = sof_v_t, sd = sd_t)
-  k21 <- k21_h * k21_v
-  return(k21)
+
+#### Optimize parameters
+opt_para <- function(par, func){
+  func <- match.fun(func)
+  len_par <- length(par)
+  opt <- optimx(para, func, method = "BFGS")
+  new_para <- opt[seq_len(len_par)] |> as.numeric()
+  return(new_para)
 }
-k21 <- make_k21()
-k11 <- make_k11(para)
-#Add noise
+
+writeLines("Optimize parameters...")
+para <- opt_para(para, "ln_likelihood")
+
+#### Calculate covariance matrices
+k11 <- make_k(para[1:3], cm1 = n_sws, cm2 = n_sws) 
+k21 <- make_k(para[1:3], cm1 = testing, cm2 = n_sws) 
+#### Add noise to K11
 if (noise){
   r <- diag(nrow(k11))
   k11 <- k11 + r
@@ -110,9 +114,10 @@ testing$nsws <- k21 %*% ginv(k11) %*% n_sws$nsws
 
 ## plot predicting
 test_pic <- ggplot() +
-  geom_point(data=n_sws,mapping = aes(x=nsws,y=z))+
-  geom_line(data=testing, mapping = aes(x=nsws,y=z),color="#D3323F",orientation = "y")+
+  geom_point(data = n_sws, mapping = aes(x = nsws, y = z))+
+  geom_line(data = testing, mapping = aes(x = nsws, y = z),color="#D3323F",orientation = "y")+
   scale_y_reverse()+
   facet_wrap(~x, nrow = 2)
-test_pic
+test_pic |> print()
+writeLines("Plot predicting curve.")
 
