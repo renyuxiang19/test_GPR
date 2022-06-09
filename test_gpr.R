@@ -1,5 +1,6 @@
 library(tidyverse)
 library(rdist)
+library(rSPDE)
 # Training data
 s <- c(0.1, 0.3, 0.5, 0.7, 0.9)
 z <- c(6, 4, 4, 7, 6)
@@ -55,7 +56,9 @@ make_cov <- function(s1, s2, kernel){
     Gaussian = kernel_g(distances),
     Markovian = kernel_m(distances),
     Binary = kernel_b(distances),
-    Whittle = purrr::modify(distances, kernel_wm)
+    Whittle = purrr::modify(distances, 
+                            rSPDE::matern.covariance, 
+                            kappa = 10, nu = 1, sigma = sd)
   )
   return(cov_m)
 }
