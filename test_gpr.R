@@ -58,7 +58,7 @@ make_cov <- function(s1, s2, kernel){
     Binary = kernel_b(distances),
     Whittle = purrr::modify(distances, 
                             rSPDE::matern.covariance, 
-                            kappa = 10, nu = 1, sigma = sd)
+                            kappa = 10, nu = 5, sigma = sd)
   )
   return(cov_m)
 }
