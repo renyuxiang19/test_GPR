@@ -12,7 +12,7 @@ plot(s,z,
 # Kernel functions
 sof <- 0.5
 sd <- 5
-nu <- 100
+nu <- 0.5
 noise <- TRUE
 
 kernel_g <- function(d){
@@ -42,10 +42,18 @@ kernel_e <- function(d){
 
 kernel_wm <- function(d){
   if (d == 0) {
-    covariance <- sd
+    covariance <- sd^2
   }else{
     frac <- sqrt(pi)*gamma(nu+0.5)*d/(gamma(nu)*sof)
-    covariance <- (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
+    covariance <-sd^2 * (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
+  }
+  return(covariance)
+}
+kernel_wm2 <- function(d,k){
+  if (d == 0) {
+    covariance <- sd
+  }else{
+    covariance <-sd^2 * (2^(1-nu)/gamma(nu)) * (k*d)^nu * besselK(k*d, nu)
   }
   return(covariance)
 }
@@ -58,7 +66,8 @@ make_cov <- function(s1, s2, kernel){
     Binary = kernel_b(distances),
     Whittle = purrr::modify(distances, 
                             rSPDE::matern.covariance, 
-                            kappa = 10, nu = 5, sigma = sd)
+                            kappa = 10, nu = nu, sigma = sd),
+    wm2 = purrr::modify(distances, kernel_wm)
   )
   return(cov_m)
 }
@@ -66,8 +75,8 @@ make_cov <- function(s1, s2, kernel){
 # Predict
 test_s <- seq(0, 1, length= 40)
 
-k <- make_cov(s1=s, s2=s, kernel = "Whittle")
-k_star <- make_cov(s1=test_s, s2=s, kernel = "Whittle")
+k <- make_cov(s1=s, s2=s, kernel = "Markovian")
+k_star <- make_cov(s1=test_s, s2=s, kernel = "Markovian")
  # Add noise 
 if (noise){
   r <- diag(nrow(k))
