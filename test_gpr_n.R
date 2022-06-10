@@ -7,14 +7,14 @@ source("functions.r")
 
 ## (initial) Parameters of GPR.
 filename <- "kaminokoike_SWS.dat"
-kernel_fun <- "kernel_g"
+kernel_fun <- "kernel_wm"
 sof_h_t <- 200   
-sof_v_t <- 2 
+sof_v_t <- 2
 sd_t <- 10
 sof_h_r <- 0.01
 sof_v_r <- 0.01
 sd_r <- 10 
-nu <- 1.25
+nu <- 3
 noise <- TRUE
 ### Parameter vector.
 para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
@@ -60,11 +60,12 @@ make_k <- function(par, cm1, cm2){
   sof_h <- par[1]
   sof_v <- par[2]
   sd <- par[3]
+#  nu <- par[7]
   #
   k21_h <- make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
-                    kernel = kernel_fun, sof = sof_h, sd = sd)
+                    kernel = kernel_fun, sof = sof_h, sd = sd, nu = nu)
   k21_v <- make_cov(m1 = cm1["z"], m2 = cm2["z"],
-                    kernel = kernel_fun, sof = sof_v, sd = sd)
+                    kernel = kernel_fun, sof = sof_v, sd = sd, nu = nu)
   k21 <- k21_h * k21_v
   return(k21)
 }
@@ -102,7 +103,11 @@ para <- opt_para(para, "ln_likelihood")
 
 #### Calculate covariance matrices
 k11 <- make_k(para[1:3], cm1 = n_sws, cm2 = n_sws) 
+k11_r <- make_k(para[4:6], cm1 = n_sws, cm2 = n_sws) 
 k21 <- make_k(para[1:3], cm1 = testing, cm2 = n_sws) 
+k21_r <- make_k(para[4:6], cm1 = testing, cm2 = n_sws) 
+k11 <- k11 + k11_r
+k21 <- k21 + k21_r
 #### Add noise to K11
 if (noise){
   r <- diag(nrow(k11))

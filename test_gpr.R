@@ -12,7 +12,7 @@ plot(s,z,
 # Kernel functions
 sof <- 0.5
 sd <- 5
-nu <- 0.5
+nu <- 3
 noise <- TRUE
 
 kernel_g <- function(d){
@@ -53,7 +53,7 @@ kernel_wm2 <- function(d,k){
   if (d == 0) {
     covariance <- sd
   }else{
-    covariance <-sd^2 * (2^(1-nu)/gamma(nu)) * (k*d)^nu * besselK(k*d, nu)
+    covariance <- sd^2 * (2^(1-nu)/gamma(nu)) * (k*d)^nu * besselK(k*d, nu)
   }
   return(covariance)
 }
@@ -75,8 +75,8 @@ make_cov <- function(s1, s2, kernel){
 # Predict
 test_s <- seq(0, 1, length= 40)
 
-k <- make_cov(s1=s, s2=s, kernel = "Markovian")
-k_star <- make_cov(s1=test_s, s2=s, kernel = "Markovian")
+k <- make_cov(s1=s, s2=s, kernel = "wm2")
+k_star <- make_cov(s1=test_s, s2=s, kernel = "wm2")
  # Add noise 
 if (noise){
   r <- diag(nrow(k))

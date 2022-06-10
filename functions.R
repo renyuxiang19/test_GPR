@@ -54,10 +54,10 @@ kernel_e <- function(d){
 # Whittle-Matern kernel 
 kernel_wm <- function(d, nu, sof, sd){
   if (d == 0) {
-    covariance <- sd
+    covariance <- sd^2
   }else{
     frac <- sqrt(pi)*gamma(nu+0.5)*d/(gamma(nu)*sof)
-    covariance <- (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
+    covariance <- sd^2 * (2/gamma(nu)) * frac^nu * besselK(2*frac, nu)
   }
   return(covariance)
 }
