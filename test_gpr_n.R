@@ -8,13 +8,13 @@ source("functions.r")
 ## (initial) Parameters of GPR.
 filename <- "kaminokoike_SWS.dat"
 kernel_fun <- "kernel_wm"
-sof_h_t <- 200   
+sof_h_t <- 200 
 sof_v_t <- 2
 sd_t <- 10
 sof_h_r <- 0.01
 sof_v_r <- 0.01
 sd_r <- 10 
-nu <- 3
+nu <- 5
 noise <- TRUE
 ### Parameter vector.
 para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
