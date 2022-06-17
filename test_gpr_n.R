@@ -3,6 +3,11 @@
 # library(rlang)
 library(MASS)
 library(optimx)
+library(GenSA)
+library(GA)
+library(doParallel)
+library(foreach)
+library(iterators)
 source("functions.r")
 
 ## (initial) Parameters of GPR.
@@ -18,7 +23,8 @@ nu <- 5
 noise <- TRUE
 ### Parameter vector.
 para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
-
+lower <- c(10, 1, 1, 0.01, 0.01, 1)
+upper <- c(400, 10, 10, 0.04, 0.04, 10)
 ### Unimportant parameter
 mesh_size_v <- 0.1
 
@@ -71,19 +77,18 @@ make_k <- function(par, cm1, cm2){
 }
 
 #### likelihood function.
-ln_likelihood <- function(para){
   # Observation vector.
-  z <- n_sws$nsws |> matrix()
-  #
-  m <- length(para)
+z <- n_sws$nsws |> matrix()
+m <- length(para)
+thirdterm <- 0.5 * m * log(2 * pi)
+ln_likelihood <- function(para){
   k11_t <- make_k(para[1:3], cm1 = n_sws, cm2 = n_sws)
   k11_r <- make_k(para[4:6], cm1 = n_sws, cm2 = n_sws)
   k11_t <- k11_t/k11_t[1,1]
   k11_r <- k11_r/k11_r[1,1]
   k11 <- k11_t + k11_r
   f <- -0.5 * t(z) %*% ginv(k11) %*% z - 
-    0.5 * log(det(k11)) +
-    0.5 * m * log(2 * pi)
+    0.5 * log(det(k11)) + thirdterm
   f <- -f
   f <- as.numeric(f)
   return(f)
@@ -97,7 +102,15 @@ opt_para <- function(par, func){
   new_para <- opt[seq_len(len_par)] |> as.numeric()
   return(new_para)
 }
-
+# out_sa <- GenSA::GenSA(par = para, fn = ln_likelihood, 
+#              lower = lower, upper = upper,
+#              control = list(smooth = TRUE , max.call = 14))
+out_ga <- GA::ga(type = "real-valued", fitness = ln_likelihood, 
+                 lower = lower, upper = upper,
+                 popSize = 80, maxiter = 150, run = 20, parallel = 2)
+# out <- optimization::optim_sa(fun = ln_likelihood, start = para,
+#                               lower = lower, upper = upper,
+#                               control = list(nlimit = 2))
 writeLines("Optimize parameters...")
 para <- opt_para(para, "ln_likelihood")
 
@@ -106,8 +119,8 @@ k11 <- make_k(para[1:3], cm1 = n_sws, cm2 = n_sws)
 k11_r <- make_k(para[4:6], cm1 = n_sws, cm2 = n_sws) 
 k21 <- make_k(para[1:3], cm1 = testing, cm2 = n_sws) 
 k21_r <- make_k(para[4:6], cm1 = testing, cm2 = n_sws) 
-k11 <- k11 + k11_r
-k21 <- k21 + k21_r
+k11 <- k11 #+ k11_r
+k21 <- k21 #+ k21_r
 #### Add noise to K11
 if (noise){
   r <- diag(nrow(k11))
