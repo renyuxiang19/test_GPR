@@ -22,9 +22,9 @@ sd_r <- 10
 nu <- 5
 noise <- TRUE
 ### Parameter vector.
-para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
-lower <- c(10, 1, 1, 0.01, 0.01, 1)
-upper <- c(400, 10, 10, 0.04, 0.04, 10)
+para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu)
+lower <- c(1, 1, 1, 0.01, 0.01, 1, 0.5)
+upper <- c(400, 400, 10, 0.05, 0.05, 10, 10)
 ### Unimportant parameter
 mesh_size_v <- 0.1
 
@@ -66,7 +66,7 @@ make_k <- function(par, cm1, cm2){
   sof_h <- par[1]
   sof_v <- par[2]
   sd <- par[3]
-#  nu <- par[7]
+  nu <- par[4]
   #
   k21_h <- make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
                     kernel = kernel_fun, sof = sof_h, sd = sd, nu = nu)
@@ -82,14 +82,14 @@ z <- n_sws$nsws |> matrix()
 m <- length(para)
 thirdterm <- 0.5 * m * log(2 * pi)
 ln_likelihood <- function(para){
-  k11_t <- make_k(para[1:3], cm1 = n_sws, cm2 = n_sws)
-  k11_r <- make_k(para[4:6], cm1 = n_sws, cm2 = n_sws)
+  k11_t <- make_k(para[-c(4:6)], cm1 = n_sws, cm2 = n_sws)
+  k11_r <- make_k(para[-c(1:3)], cm1 = n_sws, cm2 = n_sws)
   k11_t <- k11_t/k11_t[1,1]
   k11_r <- k11_r/k11_r[1,1]
   k11 <- k11_t + k11_r
-  f <- -0.5 * t(z) %*% ginv(k11) %*% z - 
+  f <- -0.5 * t(z) %*% MASS::ginv(k11) %*% z - 
     0.5 * log(det(k11)) + thirdterm
-  f <- -f
+  #f <- -f
   f <- as.numeric(f)
   return(f)
 }
@@ -105,9 +105,11 @@ opt_para <- function(par, func){
 # out_sa <- GenSA::GenSA(par = para, fn = ln_likelihood, 
 #              lower = lower, upper = upper,
 #              control = list(smooth = TRUE , max.call = 14))
-out_ga <- GA::ga(type = "real-valued", fitness = ln_likelihood, 
+out_ga2 <- GA::ga(type = "real-valued", fitness = ln_likelihood, 
                  lower = lower, upper = upper,
-                 popSize = 80, maxiter = 150, run = 20, parallel = 2)
+                 popSize = 200, maxiter = 100, run = 20, parallel = 8,
+                 optim = FALSE)
+para <- out_ga2@solution |> as.numeric()
 # out <- optimization::optim_sa(fun = ln_likelihood, start = para,
 #                               lower = lower, upper = upper,
 #                               control = list(nlimit = 2))
