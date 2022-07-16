@@ -23,8 +23,8 @@ nu <- 5
 noise <- TRUE
 ### Parameter vector.
 para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu)
-lower <- c(  1,  1, 0.1, 0.01, 0.01, 0.1, 0.5)
-upper <- c(200, 40,  20, 0.05, 0.05,  20, 10)
+lower <- c(  1,  1, 0.1, 1, 1, 0.1, 0.5)
+upper <- c(200, 40,  20, 5, 5,  20, 10)
 ### Unimportant parameter
 mesh_size_v <- 0.1
 
@@ -32,7 +32,8 @@ mesh_size_v <- 0.1
 n_sws <- read_MAIC(filename) |> 
   dplyr::mutate(y=0) |>
   tibble::rowid_to_column("ID") |>
-  dplyr::select(-ID)
+  dplyr::select(-ID)|>
+  dplyr::filter(23 < x & x < 25)
 
 ## Plot raw data.
 raw_pic <- ggplot(data=n_sws)+

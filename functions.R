@@ -81,3 +81,8 @@ make_cov <- function(m1, m2, kernel, ... ){
   k <- purrr::modify(d, kernel, ...)
   return(k)
 }
+#
+is_mathinteger = function(v){
+  all(round(v) == v)
+}
+
