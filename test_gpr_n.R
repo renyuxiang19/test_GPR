@@ -1,9 +1,9 @@
 # Test GPR with real N-value data.
 # library(tidyverse)
 # library(rlang)
+# library(GenSA)
 library(MASS)
 library(optimx)
-library(GenSA)
 library(GA)
 library(doParallel)
 library(foreach)
@@ -23,8 +23,8 @@ nu <- 5
 noise <- TRUE
 ### Parameter vector.
 para <- c(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu)
-lower <- c(1, 1, 1, 0.01, 0.01, 1, 0.5)
-upper <- c(200, 40, 10, 0.05, 0.05, 10, 10)
+lower <- c(  1,  1, 0.1, 0.01, 0.01, 0.1, 0.5)
+upper <- c(200, 40,  20, 0.05, 0.05,  20, 10)
 ### Unimportant parameter
 mesh_size_v <- 0.1
 
@@ -80,14 +80,16 @@ make_k <- function(par, cm1, cm2){
 z <- n_sws$nsws |> matrix()
 m <- length(para)
 thirdterm <- 0.5 * m * log(2 * pi)
+#
 ln_likelihood <- function(para){
   k11_t <- make_k(para[-c(4:6)], cm1 = n_sws, cm2 = n_sws)
   k11_r <- make_k(para[-c(1:3)], cm1 = n_sws, cm2 = n_sws)
-  k11_t <- k11_t/k11_t[1,1]
-  k11_r <- k11_r/k11_r[1,1]
+  k11_r_pivot <- k11_r[1,1]
+  k11_t <- k11_t/k11_r_pivot
+  k11_r <- k11_r/k11_r_pivot
   k11 <- k11_t + k11_r
-  f <- -0.5 * t(z) %*% MASS::ginv(k11) %*% z - 
-    0.5 * log(det(k11)) + thirdterm
+  f <- -0.5 * t(z) %*% ginv(k11*k11_r_pivot) %*% z - 
+    0.5 *(log(k11_r_pivot) * nrow(k11)+ log(det(k11))) + thirdterm
   #f <- -f
   f <- as.numeric(f)
   return(f)
@@ -107,7 +109,7 @@ opt_para <- function(par, func){
 #              control = list(smooth = TRUE , max.call = 14))
 out_ga2 <- GA::ga(type = "real-valued", fitness = ln_likelihood, 
                  lower = lower, upper = upper,
-                 popSize = 100, maxiter = 100, run = 20, parallel = TRUE,
+                 popSize = 120, maxiter = 100, run = 20, parallel = 7,
                  optim = FALSE)
 para <- out_ga2@solution[1,] |> as.numeric()
 para_out <- out_ga2@solution
@@ -126,8 +128,7 @@ k11 <- k11 #+ k11_r
 k21 <- k21 #+ k21_r
 #### Add noise to K11
 if (noise){
-  r <- diag(nrow(k11))
-  k11 <- k11 + r
+  k11 <- `diag<-`(k11, diag(k11)+1)
 }
 
 ## Predict

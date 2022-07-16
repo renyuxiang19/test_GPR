@@ -5,24 +5,28 @@ library(rlang)
 read_MAIC <- function(file_name){
   rawdat<-read.csv(file = file_name) #カンマ区切りのファイルを読み込む(他の書式はMAICの入力fileと同じ)　
   colnames(rawdat)<-c("z","nsws")
-  pointnum<-rawdat[1,1]
-  indexnum<-numeric(length = pointnum)
-  xcoordinate<-numeric(length = pointnum)
-  indexnum[1]<-rawdat[2,1]
-  xcoordinate[1]<-rawdat[3,1]
-  maindata<-rawdat[4:(3+indexnum[1]),]
-  cumdatarow<-0
-  for (i in 2:pointnum) {
-    cumindexrow<-1+(i-1)*2
-    cumdatarow<-indexnum[(i-1)]+cumdatarow
-    indexnum[i]<-rawdat[cumdatarow+cumindexrow+1,1]
-    xcoordinate[i]<-rawdat[cumdatarow+cumindexrow+2,1]
-    maindata<-rbind(maindata,rawdat[(cumdatarow+cumindexrow+3):(cumdatarow+cumindexrow+2+indexnum[i]),]) 
+  point_num<-rawdat[1,1]
+  #
+  data_number_loca <- 2
+  data_number <- numeric(length = point_num)
+  distance <- numeric(length = point_num)
+  for (i in 1:point_num){
+    data_number[i] <- rawdat[data_number_loca, 1]
+    distance[i] <- rawdat[data_number_loca + 1 , 1]
+    data_number_loca <- data_number_loca + data_number[i] + 2
+    # check the number of data.
+    if (!is_mathinteger(data_number[i])) {
+      paste("Error: the number of data at ", i,
+            "-th point is not a integer, pleas check the number of data in input file.",sep = "") |>
+        stop()
+    }
   }
-  if(length(rep(xcoordinate,indexnum))!=nrow(maindata)){
-    print("Error")
-  }else{maindata$x<-rep(xcoordinate,indexnum)}
-  return(maindata)
+  distance_index <- purrr::map2(distance, data_number, function(x, y) c(NA, NA, rep(x, each = y)) ) |> 
+    unlist()
+  distance_index <- c(NA, distance_index)
+  #
+  rawdat <- rawdat |> dplyr::mutate(x = distance_index)
+  dplyr::filter(rawdat, !is.na(x))
 }
 
 # Kernel functions
