@@ -22,9 +22,9 @@ sd_r <- 10
 nu <- 5
 noise <- TRUE
 ### Parameter vector.
-para <- c(sof_h_t, sof_v_t, sd_t, nu)
-lower <- c(  1,  0.1, 1, 0.5)
-upper <- c(200, 40,  80, 10)
+para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu)
+lower <- c( 1,0.1, 1, 1,0.1, 1, 0.5)
+upper <- c(20, 10,50,20, 10,50, 10)
 ### Unimportant parameter
 mesh_size_v <- 0.1
 
@@ -89,6 +89,7 @@ ln_likelihood <- function(para){
   k11_t <- k11_t/k11_r_pivot
   k11_r <- k11_r/k11_r_pivot
   k11 <- k11_t + k11_r
+  k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.2)
   f <- -0.5 * t(z) %*% ginv(k11*k11_r_pivot) %*% z - 
     0.5 *(log(k11_r_pivot) * nrow(k11)+ log(det(k11))) + thirdterm
   #f <- -f
@@ -100,7 +101,7 @@ ln_likelihood_2 <- function(para){
   k11_t <- make_k(para, cm1 = n_sws, cm2 = n_sws)
   k11_t_pivot <- k11_t[1,1]
   k11_t <- k11_t/k11_t_pivot
-  k11_t <- `diag<-`(k11_t, diag(k11_t)+1)
+  k11_t <- `diag<-`(k11_t, diag(k11_t) + 0.1)
   k11 <- k11_t
   f <- -0.5 * t(z) %*% ginv(k11*k11_t_pivot) %*% z - 
     0.5 *(log(k11_t_pivot) * nrow(k11) + log(det(k11))) + thirdterm
@@ -121,22 +122,22 @@ opt_para <- function(par, func){
 # out_sa <- GenSA::GenSA(par = para, fn = ln_likelihood, 
 #              lower = lower, upper = upper,
 #              control = list(smooth = TRUE , max.call = 14))
-out_ga2 <- GA::ga(type = "real-valued", fitness = ln_likelihood_2, 
+out_ga2 <- GA::ga(type = "real-valued", fitness = ln_likelihood, 
                  lower = lower, upper = upper,
-                 popSize = 120, maxiter = 100, run = 20, parallel = 7,
+                 popSize = 120, maxiter = 100, run = 20, parallel = TRUE,
                  optim = FALSE)
 para <- out_ga2@solution[1,] |> as.numeric()
 para_out <- out_ga2@solution
-colnames(para_out) <- c("sof_h_t", "sof_v_t", "sd_t", "nu")
+colnames(para_out) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r","nu")
 # out <- optimization::optim_sa(fun = ln_likelihood, start = para,
 #                               lower = lower, upper = upper,
 #                               control = list(nlimit = 2))
 #para <- opt_para(para, "ln_likelihood")
 
 #### Calculate covariance matrices
-k11 <- make_k(para, cm1 = n_sws, cm2 = n_sws) 
+k11 <- make_k(para[-c(4:6)], cm1 = n_sws, cm2 = n_sws) 
 # k11_r <- make_k(para[-c(1:3)], cm1 = n_sws, cm2 = n_sws) 
-k21 <- make_k(para, cm1 = testing, cm2 = n_sws) 
+k21 <- make_k(para[-c(4:6)], cm1 = testing, cm2 = n_sws) 
 # k21_r <- make_k(para[-c(1:3)], cm1 = testing, cm2 = n_sws) 
 k11 <- k11 #+ k11_r
 k21 <- k21 #+ k21_r
