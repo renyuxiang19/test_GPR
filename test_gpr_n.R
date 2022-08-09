@@ -89,7 +89,7 @@ ln_likelihood <- function(para){
   k11_t <- k11_t/k11_r_pivot
   k11_r <- k11_r/k11_r_pivot
   k11 <- k11_t + k11_r
-  k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.2)
+  k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.1)
   f <- -0.5 * t(z) %*% ginv(k11*k11_r_pivot) %*% z - 
     0.5 *(log(k11_r_pivot) * nrow(k11)+ log(det(k11))) + thirdterm
   #f <- -f
@@ -124,7 +124,7 @@ opt_para <- function(par, func){
 #              control = list(smooth = TRUE , max.call = 14))
 out_ga2 <- GA::ga(type = "real-valued", fitness = ln_likelihood, 
                  lower = lower, upper = upper,
-                 popSize = 120, maxiter = 100, run = 20, parallel = TRUE,
+                 popSize = 120, maxiter = 100, run = 20, parallel = 7,
                  optim = FALSE)
 para <- out_ga2@solution[1,] |> as.numeric()
 para_out <- out_ga2@solution
