@@ -19,6 +19,9 @@ GPR <- R6::R6Class(
     test_pic = NULL,
     #
     initialize = function(data_file){
+      if(rlang::is_missing(data_file)){
+        stop("Error: GPR: please specify a file (MAIC) to read data.")
+      }
       # Read data.
       if (is.character(data_file)){
         self$n_sws = private$read_MAIC(data_file) |> 
@@ -34,8 +37,9 @@ GPR <- R6::R6Class(
           facet_wrap(~x, nrow = 2)
         print(self$raw_pic)
         writeLines("GPR: Plot the raw data.")
-      }else{stop("Error: GPR: please specify a file (MAIC) to read data.")}
+      }else{stop("Error: GPR: please use the name (string) to specify a file (MAIC).")}
     },
+    #
     create_mesh = function(){
       # Prepare testing data (mesh).
       private$depth <- self$n_sws |> 
@@ -49,6 +53,15 @@ GPR <- R6::R6Class(
         }) |>
         mutate(y=0)
     },
+    #
+    set_kernel = function(fun_name){
+      if (is.character(fun_name)){
+        private$kernel_fun <- fun_name
+      }else{
+        stop("Error: GPR: The name of kernel function should be a character string")
+      }
+    },
+    #
     set_parameter = function(sof_h_t,sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu){
       private$sof_h_t <- sof_h_t
       private$sof_v_t <- sof_v_t
@@ -57,10 +70,11 @@ GPR <- R6::R6Class(
       private$sof_v_r <- sof_v_r
       private$sd_r <- sd_r
       if (!rlang::is_missing(nu)) {
-        self$nu <- nu
-        self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu)
-        colnames(self$para) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r","nu")
+        private$nu <- nu
+        self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu) |> matrix(nrow = 1)
+        colnames(self$para) <- para_name
         private$whether_nu <- TRUE
+        private$kernel_fun <- "kernel_wm"
       }else{
         self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r)
         colnames(self$para) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r")
@@ -68,9 +82,27 @@ GPR <- R6::R6Class(
       }
       private$whether_set_parameter <- TRUE
     },
-    set_kernel = funcion(fun_name){
-      private$kernel_fun <- fun_name
-    }
+    #
+    set_par_scope = function(sof_h_t,sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu){
+      # Check if nu is used.
+      if (!rlang::is_missing(nu)) {
+        par_scope <- list(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu)
+        private$whether_nu <- TRUE
+        private$kernel_fun <- "kernel_wm"
+      }else{
+        par_scope <- list(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r)
+        private$whether_nu <- FALSE
+      }
+      # Check the argument format.
+      if (!purrr::every(par_scope, ~length(.x)== 2)) {
+        stop("Error: GPR: The scope of parameters should be vectors which include upper and lower limit. like nu = c(0, 1)")
+      }
+      #
+      private$upper <- par_scope |> purrr::map_dbl(max)
+      private$lower <- par_scope |> purrr::map_dbl(min)
+      private$whether_set_scope <- TRUE
+    },
+    
     
   ),
   #
@@ -86,13 +118,17 @@ GPR <- R6::R6Class(
     depth = NULL,
     noise = TRUE,
     mesh_size_v = 0.1,
-    # used for likelihood funcion.
+    upper = NULL,
+    lower = NULL,
+    para_name = c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r","nu"),
+    # Parameters used for likelihood function.
     z = NULL,
     m = NULL,
     thirdterm = NULL,
     #
     whether_nu = FALSE,
     whether_set_parameter = FALSE,
+    whether_set_scope = FALSE,
     # Read data from a file. 
     read_MAIC = function(file_name){
       rawdat<-read.csv(file = file_name) #カンマ区切りのファイルを読み込む(他の書式はMAICの入力fileと同じ)　
