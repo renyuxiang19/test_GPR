@@ -13,9 +13,9 @@ source("functions.r")
 ## (initial) Parameters of GPR.
 filename <- "kaminokoike_SWS.dat"
 kernel_fun <- "kernel_wm"
-sof_h_t <- 200 
-sof_v_t <- 2
-sd_t <- 10
+sof_h_t <- 30 
+sof_v_t <- 20
+sd_t <- 30
 sof_h_r <- 0.01
 sof_v_r <- 0.01
 sd_r <- 10 
@@ -26,7 +26,7 @@ para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu)
 lower <- c( 1,0.1, 1, 1,0.1, 1, 0.5)
 upper <- c(20, 10,50,20, 10,50, 10)
 ### Unimportant parameter
-mesh_size_v <- 0.1
+mesh_size_v <- 0.25
 
 ## read 2D data.
 n_sws <- read_MAIC(filename) |> 
@@ -47,8 +47,10 @@ writeLines("Plot the raw data.")
 ## Prepare testing data (mesh).
 depth <- n_sws |> 
   group_by(x) |> 
-  summarise(min_depth = min(z),max_depth = max(z))
-testing <- list(depth$x, depth$min_depth, depth$max_depth) |> 
+  summarise(min_depth = min(z), max_depth = max(z)) |>
+  ungroup()
+testing <- as.list(depth) |> 
+  rlang::set_names(NULL) |>
   purrr::pmap_dfr(function(dis, min, max){
     value <- seq(min, max, by = mesh_size_v)
     len <- length(value)

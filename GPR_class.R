@@ -5,6 +5,7 @@ library(doParallel)
 library(foreach)
 library(iterators)
 library(R6)
+library(tidyverse)
 
 GPR <- R6::R6Class(
   classname = "GPR",
@@ -20,7 +21,7 @@ GPR <- R6::R6Class(
     #
     initialize = function(data_file){
       if(rlang::is_missing(data_file)){
-        stop("Error: GPR: please specify a file (MAIC) to read data.")
+        stop("Error in GPR: please specify a file (MAIC) to read data.")
       }
       # Read data.
       if (is.character(data_file)){
@@ -30,24 +31,24 @@ GPR <- R6::R6Class(
           dplyr::select(-ID)|>
           dplyr::filter(-1 < x & x < 200)
         # Plot raw data.
-        self$raw_pic = ggplot(data=self$n_sws)+
+        self$raw_pic = ggplot2::ggplot(data=self$n_sws)+
           geom_point(mapping = aes(x=nsws,y=z))+
           geom_line(mapping = aes(x=nsws,y=z),orientation = "y")+
           scale_y_reverse()+
           facet_wrap(~x, nrow = 2)
         print(self$raw_pic)
         writeLines("GPR: Plot the raw data.")
-      }else{stop("Error: GPR: please use the name (string) to specify a file (MAIC).")}
+      }else{stop("Error in GPR: please use the name (string) to specify a file (MAIC).")}
     },
     #
-    create_mesh = function(){
+    create_mesh = function(size_v = 0.1){
       # Prepare testing data (mesh).
       private$depth <- self$n_sws |> 
         group_by(x) |> 
         summarise(min_depth = min(z), max_depth = max(z))
       self$testing <- list(private$depth$x, private$depth$min_depth, private$depth$max_depth) |> 
         purrr::pmap_dfr(function(dis, min, max){
-          value <- seq(min, max, by = private$mesh_size_v)
+          value <- seq(min, max, by = size_v)
           len <- length(value)
           tibble::tibble(x = rep(dis,times = len), z = value)
         }) |>
@@ -58,7 +59,7 @@ GPR <- R6::R6Class(
       if (is.character(fun_name)){
         private$kernel_fun <- fun_name
       }else{
-        stop("Error: GPR: The name of kernel function should be a character string")
+        stop("Error in GPR: The name of kernel function should be a character string")
       }
     },
     #
@@ -71,13 +72,13 @@ GPR <- R6::R6Class(
       private$sd_r <- sd_r
       if (!rlang::is_missing(nu)) {
         private$nu <- nu
-        self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu) |> matrix(nrow = 1)
-        colnames(self$para) <- para_name
+        self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu) 
+        names(self$para) <- private$para_name
         private$whether_nu <- TRUE
         private$kernel_fun <- "kernel_wm"
       }else{
         self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r)
-        colnames(self$para) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r")
+        names(self$para) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r")
         private$whether_nu <- FALSE
       }
       private$whether_set_parameter <- TRUE
@@ -95,13 +96,22 @@ GPR <- R6::R6Class(
       }
       # Check the argument format.
       if (!purrr::every(par_scope, ~length(.x)== 2)) {
-        stop("Error: GPR: The scope of parameters should be vectors which include upper and lower limit. like nu = c(0, 1)")
+        stop("Error in GPR: The scope of parameters should be vectors which include upper and lower limit. like nu = c(0, 1)")
       }
       #
       private$upper <- par_scope |> purrr::map_dbl(max)
       private$lower <- par_scope |> purrr::map_dbl(min)
       private$whether_set_scope <- TRUE
     },
+    predict = function(){
+      # Calculate covariance matrices of trend component.
+      k11 <- make_k(self$para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws) 
+      k21 <- make_k(self$para[-c(4:6)], cm1 = self$testing, cm2 = self$n_sws) 
+      if (noise){
+        k11 <- `diag<-`(k11, diag(k11)+1)
+      }
+      self$testing$nsws <- k21 %*% ginv(k11) %*% self$n_sws$nsws
+    }
     
     
   ),
@@ -117,7 +127,6 @@ GPR <- R6::R6Class(
     nu = NULL,
     depth = NULL,
     noise = TRUE,
-    mesh_size_v = 0.1,
     upper = NULL,
     lower = NULL,
     para_name = c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r","nu"),
@@ -129,6 +138,7 @@ GPR <- R6::R6Class(
     whether_nu = FALSE,
     whether_set_parameter = FALSE,
     whether_set_scope = FALSE,
+    ######################### Pure Functions ##############################
     # Read data from a file. 
     read_MAIC = function(file_name){
       rawdat<-read.csv(file = file_name) #カンマ区切りのファイルを読み込む(他の書式はMAICの入力fileと同じ)　
@@ -144,7 +154,7 @@ GPR <- R6::R6Class(
         data_number_loca <- data_number_loca + data_number[i] + 2
         # check the number of data.
         if (!private$is_mathinteger(data_number[i])) {
-          paste("Error: the number of data at ", i,
+          paste("Error in read_MAIC: the number of data at ", i,
                 "-th point is not a integer, pleas check the number of data in input file.",sep = "") |>
             stop()
         }
@@ -188,7 +198,7 @@ GPR <- R6::R6Class(
       # "m1" and "m2" should be matrices or data.frames with same numbers of columns.
       #   e.g., if you want to calculate in two horizontal directions, the "m1" and "m1" should both have 2 columns.
       #   The first column in the both two matrices means one direction, and the second for another.
-      ############################################################
+      #
       kernel <- match.fun(kernel)
       # Check input data.
       if (ncol(m1) != ncol(m2)){ stop("Error: The number of columns of input matrices are not consistent.") }
@@ -202,8 +212,7 @@ GPR <- R6::R6Class(
     is_mathinteger = function(v){
       all(round(v) == v)
     },
-    #
-    make_k = function(par, cm1, cm2){
+    make_k_nu = function(par, cm1, cm2){
       # "cm1" and "cm2" are coordinate matrices with "x", "y", "z" as their column name.
       #   "x" and "y" are horizontal coordinate, "z" is depth.
       # "par" is a numerical vector for kernel function.
@@ -221,6 +230,24 @@ GPR <- R6::R6Class(
       k21 <- k21_h * k21_v
       return(k21)
     },
+    make_k = function(par, cm1, cm2){
+      # "cm1" and "cm2" are coordinate matrices with "x", "y", "z" as their column name.
+      #   "x" and "y" are horizontal coordinate, "z" is depth.
+      # "par" is a numerical vector for kernel function.
+      sof_h <- par[1]
+      sof_v <- par[2]
+      sd <- par[3]
+      #
+      k21_h <- private$make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
+                                kernel = self$kernel_fun, sof = sof_h, 
+                                sd = sd)
+      k21_v <- private$make_cov(m1 = cm1["z"], m2 = cm2["z"],
+                                kernel = self$kernel_fun, sof = sof_v, 
+                                sd = sd)
+      k21 <- k21_h * k21_v
+      return(k21)
+    },
+    #######################End of pure functions################################
     prepare_likelihood = function(){
       private$z <- self$n_sws$nsws |> matrix()
       private$m <- length(private$para)
