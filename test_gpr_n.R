@@ -27,6 +27,7 @@ lower <- c( 1,0.1, 1, 1,0.1, 1, 0.5)
 upper <- c(20, 10,50,20, 10,50, 10)
 ### Unimportant parameter
 mesh_size_v <- 0.25
+mesh_size_h <- 2.5
 
 ## read 2D data.
 n_sws <- read_MAIC(filename) |> 
@@ -46,9 +47,13 @@ writeLines("Plot the raw data.")
 
 ## Prepare testing data (mesh).
 depth <- n_sws |> 
-  group_by(x) |> 
-  summarise(min_depth = min(z), max_depth = max(z)) |>
-  ungroup()
+  dplyr::group_by(x) |> 
+  dplyr::summarise(min_depth = min(z), max_depth = max(z)) |>
+  dplyr::ungroup() |>
+  dplyr::arrange(x)
+interval_x <- {depth$x - lag(depth$x)} |> na.omit()
+{interval_x / mesh_size_h} |> ceiling()
+
 testing <- as.list(depth) |> 
   rlang::set_names(NULL) |>
   purrr::pmap_dfr(function(dis, min, max){
