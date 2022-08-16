@@ -39,6 +39,7 @@ GPR <- R6::R6Class(
         print(self$raw_pic)
         writeLines("GPR: Plot the raw data.")
       }else{stop("Error in GPR: please use the name (string) to specify a file (MAIC).")}
+      invisible(self)
     },
     #
     create_mesh = function(size_v = 0.1){
@@ -53,6 +54,8 @@ GPR <- R6::R6Class(
           tibble::tibble(x = rep(dis,times = len), z = value)
         }) |>
         mutate(y=0)
+      private$whether_mesh <- TRUE
+      invisible(self)
     },
     #
     set_kernel = function(fun_name){
@@ -61,6 +64,7 @@ GPR <- R6::R6Class(
       }else{
         stop("Error in GPR: The name of kernel function should be a character string")
       }
+      invisible(self)
     },
     #
     set_parameter = function(sof_h_t,sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu){
@@ -71,7 +75,6 @@ GPR <- R6::R6Class(
       private$sof_v_r <- sof_v_r
       private$sd_r <- sd_r
       if (!rlang::is_missing(nu)) {
-        private$nu <- nu
         self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu) 
         names(self$para) <- private$para_name
         private$whether_nu <- TRUE
@@ -82,15 +85,21 @@ GPR <- R6::R6Class(
         private$whether_nu <- FALSE
       }
       private$whether_set_parameter <- TRUE
+      private$para_ini <- self$para
+      invisible(self)
     },
     #
     set_par_scope = function(sof_h_t,sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu){
       # Check if nu is used.
       if (!rlang::is_missing(nu)) {
+        self$para <- c(NA, NA, NA,NA, NA, NA, NA) 
+        names(self$para) <- private$para_name
         par_scope <- list(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu)
         private$whether_nu <- TRUE
         private$kernel_fun <- "kernel_wm"
       }else{
+        self$para <- c(NA, NA, NA,NA, NA, NA, NA)
+        names(self$para) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r")
         par_scope <- list(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r)
         private$whether_nu <- FALSE
       }
@@ -102,24 +111,24 @@ GPR <- R6::R6Class(
       private$upper <- par_scope |> purrr::map_dbl(max)
       private$lower <- par_scope |> purrr::map_dbl(min)
       private$whether_set_scope <- TRUE
+      invisible(self)
     },
     predict = function(){
-      browser()
       private$check_predict()
       make_k <- private$createfunc_make_k(private$whether_nu)
-      kernel_f <- paste("private$", private$kernel_fun, sep = "")
-      kernel_function <- get(private$kernel_fun, private)
+      kernel_function <- get(private$kernel_fun, envir = private)
       # Calculate covariance matrices of trend component.
       k11 <- make_k(self$para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws, kernel = kernel_function) 
       k21 <- make_k(self$para[-c(4:6)], cm1 = self$testing, cm2 = self$n_sws, kernel = kernel_function) 
-      if (noise){
+      if (private$noise){
         k11 <- `diag<-`(k11, diag(k11) + 1)
       }
       # predict
       self$testing$nsws <- k21 %*% ginv(k11) %*% self$n_sws$nsws
+      # plot
+      private$plot_predict()
+      invisible(self)
     }
-    
-    
   ),
   #
   private = list(
@@ -136,11 +145,12 @@ GPR <- R6::R6Class(
     upper = NA,
     lower = NA,
     para_name = c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r","nu"),
+    para_ini = NULL,
     # Parameters used for likelihood function.
     z = NA,
-    m = NA,
     thirdterm = NA,
     #
+    whether_mesh = FALSE,
     whether_nu = FALSE,
     whether_set_parameter = FALSE,
     whether_set_scope = FALSE,
@@ -229,6 +239,10 @@ GPR <- R6::R6Class(
           sd <- par[3]
           nu <- par[4]
           #
+          if(is.character(kernel)){
+            kernel <- get(kernel, envir = private)
+          }
+          #
           k21_h <- private$make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
                                     kernel = kernel, sof = sof_h, 
                                     sd = sd, nu = nu)
@@ -244,6 +258,10 @@ GPR <- R6::R6Class(
           sof_v <- par[2]
           sd <- par[3]
           #
+          if(is.character(kernel)){
+            kernel <- get(kernel, envir = private)
+          }
+          #
           k21_h <- private$make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
                                     kernel = kernel, sof = sof_h, 
                                     sd = sd)
@@ -255,12 +273,37 @@ GPR <- R6::R6Class(
         }
       }
     },
-    #######################End of pure functions################################
+    #
+    divide_KP = function(points, size){
+      # divide by key points. Those key points will be kept.
+      # find the intervals.
+      points_lag <- points[-length(points)]
+      points <- points[-1]
+      interval <- {points - points_lag} |> abs()
+      # divide each interval and round it up.
+      division <- {interval / size} |> ceiling()
+      
+      # calculate points in each interval.
+      points_new <- list(points_lag, points, division) |>
+        purrr::pmap(function(start, end, number){
+          seq(start, end, length = number + 1)
+        }) |> unlist() |> unique()
+      return(points_new)
+    },
+    #
+    lerp = function(x, y, new_x){
+      # Linear interpolation
+      interp_f <- approxfun(x, y)
+      new_y <- interp_f(new_x)
+      return(new_y)
+    },
+    ####################### End of pure functions ##############################
     prepare_likelihood = function(){
       private$z <- self$n_sws$nsws |> matrix()
-      private$m <- length(private$para)
-      private$thirdterm <- 0.5 * private$m * log(2 * pi)
+      m <- length(private$para)
+      private$thirdterm <- 0.5 * m * log(2 * pi)
     },
+    #
     check_predict = function(){
      if(purrr::some(self$para, is.na)){
        stop("Error in GPR: pleas use 'set_parameter' method to set ALL parameters (set nu only when you want to use WM model).")
@@ -274,8 +317,52 @@ GPR <- R6::R6Class(
          warning("GPR: you set a value of nu without using WM model.")
        }
      }
+     if(!private$whether_mesh){
+       stop("Error in GPR: please use 'create_mesh' to creat mesh.")
+     }
     },
     match_kernel = function(name){
+    },
+    # ------ plotting functions ------
+    #
+    plot_predict = function(){
+      self$test_pic <- ggplot() +
+        geom_point(data = self$n_sws, mapping = aes(x = nsws, y = z))+
+        geom_line(data = self$testing, mapping = aes(x = nsws, y = z),color="#D3323F",orientation = "y")+
+        scale_y_reverse()+
+        facet_wrap(~x, nrow = 2)
+      self$test_pic |> print()
+    },
+    # ------ optimizing functions ------
+    ln_likelihood = function(para){
+      make_k <- createfunc_make_k(private$whether_nu)
+      k11_t <- make_k(para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws)
+      k11_r <- make_k(para[-c(1:3)], cm1 = self$n_sws, cm2 = self$n_sws)
+      k11_r_pivot <- k11_r[1,1]
+      k11_t <- k11_t/k11_r_pivot
+      k11_r <- k11_r/k11_r_pivot
+      k11 <- k11_t + k11_r
+      k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.1)
+      f <- -0.5 * t(private$z) %*% ginv(k11*k11_r_pivot) %*% private$z - 
+        0.5 *(log(k11_r_pivot) * nrow(k11)+ log(det(k11))) + private$thirdterm
+      #f <- -f
+      f <- as.numeric(f)
+      return(f)
+    },
+    opt_bfgs = function(par, func){
+      len_par <- length(par)
+      opt <- optimx(para, func, method = "BFGS")
+      new_para <- opt[seq_len(len_par)] |> as.numeric()
+      return(new_para)
+    },
+    opt_ga = function(lower, upper, func){
+      out_ga2 <- GA::ga(type = "real-valued", fitness = func, 
+                        lower = lower, upper = upper,
+                        popSize = 120, maxiter = 100, run = 20, parallel = 7,
+                        optim = FALSE)
+      self$para <- out_ga2@solution[1,] |> as.numeric()
+    }
+    opt = function(mode){
       
     }
   )

@@ -1,6 +1,6 @@
 # Test GPR with real N-value data.
-# library(tidyverse)
-# library(rlang)
+library(tidyverse)
+library(rlang)
 # library(GenSA)
 library(MASS)
 library(optimx)
@@ -55,7 +55,6 @@ x_denser <- divide_KP(points = depth_raw$x, size = mesh_size_h)
 depth <- data.frame(x = x_denser,
                     min = lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
                     max = lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
-
 testing <- as.list(depth) |> 
   rlang::set_names(NULL) |>
   purrr::pmap_dfr(function(dis, min, max){
