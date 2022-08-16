@@ -85,4 +85,27 @@ make_cov <- function(m1, m2, kernel, ... ){
 is_mathinteger = function(v){
   all(round(v) == v)
 }
+#
+divide_KP <- function(points, size){
+  # divide by key points. Those key points will be kept.
+  # find the intervals.
+  points_lag <- points[-length(points)]
+  points <- points[-1]
+  interval <- {points - points_lag} |> abs()
+  # divide each interval and round it up.
+  division <- {interval / size} |> ceiling()
+  
+  # calculate points in each interval.
+  points_new <- list(points_lag, points, division) |>
+    purrr::pmap(function(start, end, number){
+      seq(start, end, length = number + 1)
+    }) |> unlist() |> unique()
+  return(points_new)
+}
 
+lerp <- function(x, y, new_x){
+  # Linear interpolation
+  interp_f <- approxfun(x, y)
+  new_y <- interp_f(new_x)
+  return(new_y)
+}

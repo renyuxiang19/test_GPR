@@ -13,12 +13,12 @@ source("functions.r")
 ## (initial) Parameters of GPR.
 filename <- "kaminokoike_SWS.dat"
 kernel_fun <- "kernel_wm"
-sof_h_t <- 30 
-sof_v_t <- 20
-sd_t <- 30
+sof_h_t <- 30
+sof_v_t <- 5
+sd_t <- 2
 sof_h_r <- 0.01
 sof_v_r <- 0.01
-sd_r <- 10 
+sd_r <- 5
 nu <- 5
 noise <- TRUE
 ### Parameter vector.
@@ -27,7 +27,7 @@ lower <- c( 1,0.1, 1, 1,0.1, 1, 0.5)
 upper <- c(20, 10,50,20, 10,50, 10)
 ### Unimportant parameter
 mesh_size_v <- 0.25
-mesh_size_h <- 2.5
+mesh_size_h <- 10
 
 ## read 2D data.
 n_sws <- read_MAIC(filename) |> 
@@ -46,13 +46,15 @@ print(raw_pic)
 writeLines("Plot the raw data.")
 
 ## Prepare testing data (mesh).
-depth <- n_sws |> 
+depth_raw <- n_sws |> 
   dplyr::group_by(x) |> 
   dplyr::summarise(min_depth = min(z), max_depth = max(z)) |>
   dplyr::ungroup() |>
   dplyr::arrange(x)
-interval_x <- {depth$x - lag(depth$x)} |> na.omit()
-{interval_x / mesh_size_h} |> ceiling()
+x_denser <- divide_KP(points = depth_raw$x, size = mesh_size_h)
+depth <- data.frame(x = x_denser,
+                    min = lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
+                    max = lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
 
 testing <- as.list(depth) |> 
   rlang::set_names(NULL) |>

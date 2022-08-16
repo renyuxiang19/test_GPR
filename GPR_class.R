@@ -11,13 +11,13 @@ GPR <- R6::R6Class(
   classname = "GPR",
   public = list(
     #variables
-    para = NULL,
+    para = NA,
     ## Data
-    n_sws = NULL,
-    testing = NULL,
+    n_sws = NA,
+    testing = NA,
     ## Fig objects
-    raw_pic = NULL,
-    test_pic = NULL,
+    raw_pic = NA,
+    test_pic = NA,
     #
     initialize = function(data_file){
       if(rlang::is_missing(data_file)){
@@ -104,12 +104,18 @@ GPR <- R6::R6Class(
       private$whether_set_scope <- TRUE
     },
     predict = function(){
+      browser()
+      private$check_predict()
+      make_k <- private$createfunc_make_k(private$whether_nu)
+      kernel_f <- paste("private$", private$kernel_fun, sep = "")
+      kernel_function <- get(private$kernel_fun, private)
       # Calculate covariance matrices of trend component.
-      k11 <- make_k(self$para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws) 
-      k21 <- make_k(self$para[-c(4:6)], cm1 = self$testing, cm2 = self$n_sws) 
+      k11 <- make_k(self$para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws, kernel = kernel_function) 
+      k21 <- make_k(self$para[-c(4:6)], cm1 = self$testing, cm2 = self$n_sws, kernel = kernel_function) 
       if (noise){
-        k11 <- `diag<-`(k11, diag(k11)+1)
+        k11 <- `diag<-`(k11, diag(k11) + 1)
       }
+      # predict
       self$testing$nsws <- k21 %*% ginv(k11) %*% self$n_sws$nsws
     }
     
@@ -118,22 +124,22 @@ GPR <- R6::R6Class(
   #
   private = list(
     kernel_fun = "kernel_g",
-    sof_h_t = NULL,
-    sof_v_t = NULL,
-    sd_t = NULL,
-    sof_h_r = NULL,
-    sof_v_r = NULL,
-    sd_r = NULL ,
-    nu = NULL,
-    depth = NULL,
+    sof_h_t = NA,
+    sof_v_t = NA,
+    sd_t = NA,
+    sof_h_r = NA,
+    sof_v_r = NA,
+    sd_r = NA ,
+    nu = NA,
+    depth = NA,
     noise = TRUE,
-    upper = NULL,
-    lower = NULL,
+    upper = NA,
+    lower = NA,
     para_name = c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r","nu"),
     # Parameters used for likelihood function.
-    z = NULL,
-    m = NULL,
-    thirdterm = NULL,
+    z = NA,
+    m = NA,
+    thirdterm = NA,
     #
     whether_nu = FALSE,
     whether_set_parameter = FALSE,
@@ -199,7 +205,7 @@ GPR <- R6::R6Class(
       #   e.g., if you want to calculate in two horizontal directions, the "m1" and "m1" should both have 2 columns.
       #   The first column in the both two matrices means one direction, and the second for another.
       #
-      kernel <- match.fun(kernel)
+      #kernel <- match.fun(kernel)
       # Check input data.
       if (ncol(m1) != ncol(m2)){ stop("Error: The number of columns of input matrices are not consistent.") }
       # Create distance matrices
@@ -212,46 +218,65 @@ GPR <- R6::R6Class(
     is_mathinteger = function(v){
       all(round(v) == v)
     },
-    make_k_nu = function(par, cm1, cm2){
+    createfunc_make_k = function(use_nu){
       # "cm1" and "cm2" are coordinate matrices with "x", "y", "z" as their column name.
       #   "x" and "y" are horizontal coordinate, "z" is depth.
       # "par" is a numerical vector for kernel function.
-      sof_h <- par[1]
-      sof_v <- par[2]
-      sd <- par[3]
-      nu <- par[4]
-      #
-      k21_h <- private$make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
-                        kernel = self$kernel_fun, sof = sof_h, 
-                        sd = sd, nu = nu)
-      k21_v <- private$make_cov(m1 = cm1["z"], m2 = cm2["z"],
-                        kernel = self$kernel_fun, sof = sof_v, 
-                        sd = sd, nu = nu)
-      k21 <- k21_h * k21_v
-      return(k21)
-    },
-    make_k = function(par, cm1, cm2){
-      # "cm1" and "cm2" are coordinate matrices with "x", "y", "z" as their column name.
-      #   "x" and "y" are horizontal coordinate, "z" is depth.
-      # "par" is a numerical vector for kernel function.
-      sof_h <- par[1]
-      sof_v <- par[2]
-      sd <- par[3]
-      #
-      k21_h <- private$make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
-                                kernel = self$kernel_fun, sof = sof_h, 
-                                sd = sd)
-      k21_v <- private$make_cov(m1 = cm1["z"], m2 = cm2["z"],
-                                kernel = self$kernel_fun, sof = sof_v, 
-                                sd = sd)
-      k21 <- k21_h * k21_v
-      return(k21)
+      if(use_nu){
+        function(par, cm1, cm2, kernel){
+          sof_h <- par[1]
+          sof_v <- par[2]
+          sd <- par[3]
+          nu <- par[4]
+          #
+          k21_h <- private$make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
+                                    kernel = kernel, sof = sof_h, 
+                                    sd = sd, nu = nu)
+          k21_v <- private$make_cov(m1 = cm1["z"], m2 = cm2["z"],
+                                    kernel = kernel, sof = sof_v, 
+                                    sd = sd, nu = nu)
+          k21 <- k21_h * k21_v
+          return(k21)
+        }
+      }else{
+        function(par, cm1, cm2, kernel){
+          sof_h <- par[1]
+          sof_v <- par[2]
+          sd <- par[3]
+          #
+          k21_h <- private$make_cov(m1 = cm1[c("x","y")], m2 = cm2[c("x","y")],
+                                    kernel = kernel, sof = sof_h, 
+                                    sd = sd)
+          k21_v <- private$make_cov(m1 = cm1["z"], m2 = cm2["z"],
+                                    kernel = kernel, sof = sof_v, 
+                                    sd = sd)
+          k21 <- k21_h * k21_v
+          return(k21)
+        }
+      }
     },
     #######################End of pure functions################################
     prepare_likelihood = function(){
       private$z <- self$n_sws$nsws |> matrix()
       private$m <- length(private$para)
       private$thirdterm <- 0.5 * private$m * log(2 * pi)
+    },
+    check_predict = function(){
+     if(purrr::some(self$para, is.na)){
+       stop("Error in GPR: pleas use 'set_parameter' method to set ALL parameters (set nu only when you want to use WM model).")
+     }
+     if(private$kernel_fun == "kernel_wm"){
+       if (private$whether_nu  == FALSE) {
+         stop("Error in GPR: you have not set the initial value of parameter nu.")
+       }
+     }else{
+       if (private$whether_nu  == TRUE) {
+         warning("GPR: you set a value of nu without using WM model.")
+       }
+     }
+    },
+    match_kernel = function(name){
+      
     }
   )
 )
