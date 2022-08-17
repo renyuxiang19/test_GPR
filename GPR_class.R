@@ -42,12 +42,26 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     #
-    create_mesh = function(size_v = 0.1){
+    create_mesh = function(size_v = 0.1, size_h = 10){
       # Prepare testing data (mesh).
-      private$depth <- self$n_sws |> 
-        group_by(x) |> 
-        summarise(min_depth = min(z), max_depth = max(z))
-      self$testing <- list(private$depth$x, private$depth$min_depth, private$depth$max_depth) |> 
+      depth_raw <- self$n_sws |> 
+        dplyr::group_by(x) |> 
+        dplyr::summarise(min_depth = min(z), max_depth = max(z)) |>
+        dplyr::ungroup() |>
+        dplyr::arrange(x)
+      if (size_h <= 0) {
+        depth <- depth_raw
+      }else{
+        x_denser <- private$divide_KP(points = depth_raw$x, size = size_h)
+        depth <- data.frame(x = x_denser,
+                            min = private$lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
+                            max = private$lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
+        if (nrow(depth > depth_raw)) {
+          private$whether_contour <- TRUE
+        }
+      }
+      self$testing <- as.list(depth) |> 
+        rlang::set_names(NULL) |>
         purrr::pmap_dfr(function(dis, min, max){
           value <- seq(min, max, by = size_v)
           len <- length(value)
@@ -81,7 +95,7 @@ GPR <- R6::R6Class(
         private$kernel_fun <- "kernel_wm"
       }else{
         self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r)
-        names(self$para) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r")
+        names(self$para) <- private$para_name_nonu
         private$whether_nu <- FALSE
       }
       private$whether_set_parameter <- TRUE
@@ -92,15 +106,15 @@ GPR <- R6::R6Class(
     set_par_scope = function(sof_h_t,sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu){
       # Check if nu is used.
       if (!rlang::is_missing(nu)) {
-        self$para <- c(NA, NA, NA,NA, NA, NA, NA) 
+        self$para <- c(NA, NA, NA, NA, NA, NA, NA) 
         names(self$para) <- private$para_name
-        par_scope <- list(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r, nu)
+        par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu)
         private$whether_nu <- TRUE
         private$kernel_fun <- "kernel_wm"
       }else{
-        self$para <- c(NA, NA, NA,NA, NA, NA, NA)
-        names(self$para) <- c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r")
-        par_scope <- list(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r)
+        self$para <- c(NA, NA, NA, NA, NA, NA)
+        names(self$para) <- private$para_name_nonu
+        par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
         private$whether_nu <- FALSE
       }
       # Check the argument format.
@@ -128,6 +142,17 @@ GPR <- R6::R6Class(
       # plot
       private$plot_predict()
       invisible(self)
+    },
+    opt = function(mode){
+      stopifnot(whether_mesh)
+      private$prepare_likelihood()
+      match.arg(mode, c("BFGS", "GA"))
+      switch (mode,
+              BFGS = private$opt_bfgs(par = self$para, func = private$ln_likelihood),
+              GA = private$opt_ga(lower = private$lower, upper = private$upper, func = private$ln_likelihood)
+      )
+      cat("Parameters have been optimized.", "\n")
+      invisible(self)
     }
   ),
   #
@@ -140,11 +165,11 @@ GPR <- R6::R6Class(
     sof_v_r = NA,
     sd_r = NA ,
     nu = NA,
-    depth = NA,
     noise = TRUE,
     upper = NA,
     lower = NA,
     para_name = c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r","nu"),
+    para_name_nonu = c("sof_h_t", "sof_v_t", "sd_t", "sof_h_r", "sof_v_r", "sd_r"),
     para_ini = NULL,
     # Parameters used for likelihood function.
     z = NA,
@@ -154,6 +179,7 @@ GPR <- R6::R6Class(
     whether_nu = FALSE,
     whether_set_parameter = FALSE,
     whether_set_scope = FALSE,
+    whether_contour = FALSE,
     ######################### Pure Functions ##############################
     # Read data from a file. 
     read_MAIC = function(file_name){
@@ -282,7 +308,6 @@ GPR <- R6::R6Class(
       interval <- {points - points_lag} |> abs()
       # divide each interval and round it up.
       division <- {interval / size} |> ceiling()
-      
       # calculate points in each interval.
       points_new <- list(points_lag, points, division) |>
         purrr::pmap(function(start, end, number){
@@ -298,11 +323,6 @@ GPR <- R6::R6Class(
       return(new_y)
     },
     ####################### End of pure functions ##############################
-    prepare_likelihood = function(){
-      private$z <- self$n_sws$nsws |> matrix()
-      m <- length(private$para)
-      private$thirdterm <- 0.5 * m * log(2 * pi)
-    },
     #
     check_predict = function(){
      if(purrr::some(self$para, is.na)){
@@ -334,10 +354,16 @@ GPR <- R6::R6Class(
       self$test_pic |> print()
     },
     # ------ optimizing functions ------
+    prepare_likelihood = function(){
+      private$z <- self$n_sws$nsws |> matrix()
+      m <- length(private$para)
+      private$thirdterm <- 0.5 * m * log(2 * pi)
+    },
     ln_likelihood = function(para){
-      make_k <- createfunc_make_k(private$whether_nu)
-      k11_t <- make_k(para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws)
-      k11_r <- make_k(para[-c(1:3)], cm1 = self$n_sws, cm2 = self$n_sws)
+      make_k <- private$createfunc_make_k(private$whether_nu)
+      kernel_function <- get(private$kernel_fun, envir = private)
+      k11_t <- make_k(para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws, kernel = kernel_function)
+      k11_r <- make_k(para[-c(1:3)], cm1 = self$n_sws, cm2 = self$n_sws, kernel = kernel_function)
       k11_r_pivot <- k11_r[1,1]
       k11_t <- k11_t/k11_r_pivot
       k11_r <- k11_r/k11_r_pivot
@@ -349,21 +375,44 @@ GPR <- R6::R6Class(
       f <- as.numeric(f)
       return(f)
     },
+    #
     opt_bfgs = function(par, func){
-      len_par <- length(par)
-      opt <- optimx(para, func, method = "BFGS")
-      new_para <- opt[seq_len(len_par)] |> as.numeric()
-      return(new_para)
+      if (!private$whether_set_parameter) {
+        stop("Error in GPR: pleas set initial parameters before using BFGS to optimize them. (using 'set_parameter')")
+      }
+      func <- private$more_info(func = func)
+      opt <- optimx(par, func, method = "BFGS")
     },
+    #
     opt_ga = function(lower, upper, func){
+      if (!private$whether_set_scope) {
+        stop("Error in GPR: pleas set the scope of each parameter before using GA to optimize them. (using 'set_par_scope')")
+      }
       out_ga2 <- GA::ga(type = "real-valued", fitness = func, 
                         lower = lower, upper = upper,
                         popSize = 120, maxiter = 100, run = 20, parallel = 7,
                         optim = FALSE)
+      name_para <- names(self$para)
       self$para <- out_ga2@solution[1,] |> as.numeric()
-    }
-    opt = function(mode){
-      
+      names(self$para) <- name_para
+      private$whether_set_parameter <- TRUE
+    },
+    #
+    more_info = function(func){
+      # used for likelihood function. 
+      # Write the argument into 'self$para' and record the time the function has been run.
+      force(func)
+      time <- 0
+      function(x, ...){
+        res <- func(x, ...)
+        names(res) <- NULL
+        self$para <- x
+        time <<- time + 1
+        cat("BFGS | iter = ", time, " | The parameters are: ", "\n" ,sep = "")
+        print(x)
+        cat("\n")
+        res
+      }
     }
   )
 )
