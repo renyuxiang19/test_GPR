@@ -18,6 +18,8 @@ GPR <- R6::R6Class(
     ## Fig objects
     raw_pic = NA,
     test_pic = NA,
+    ##
+    testvar = NULL,
     #
     initialize = function(data_file){
       if(rlang::is_missing(data_file)){
@@ -42,7 +44,7 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     #
-    create_mesh = function(size_v = 0.1, size_h = 10){
+    create_mesh = function(size_v = 0.1, size_h = 0){
       # Prepare testing data (mesh).
       depth_raw <- self$n_sws |> 
         dplyr::group_by(x) |> 
@@ -56,7 +58,7 @@ GPR <- R6::R6Class(
         depth <- data.frame(x = x_denser,
                             min = private$lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
                             max = private$lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
-        if (nrow(depth > depth_raw)) {
+        if (nrow(depth) > nrow(depth_raw)) {
           private$whether_contour <- TRUE
         }
       }
@@ -69,6 +71,7 @@ GPR <- R6::R6Class(
         }) |>
         mutate(y=0)
       private$whether_mesh <- TRUE
+      cat("GPR: Mesh has been created.", "\n")
       invisible(self)
     },
     #
@@ -100,6 +103,7 @@ GPR <- R6::R6Class(
       }
       private$whether_set_parameter <- TRUE
       private$para_ini <- self$para
+      cat("GPR: Parameters have been set.", "\n")
       invisible(self)
     },
     #
@@ -125,6 +129,7 @@ GPR <- R6::R6Class(
       private$upper <- par_scope |> purrr::map_dbl(max)
       private$lower <- par_scope |> purrr::map_dbl(min)
       private$whether_set_scope <- TRUE
+      cat("GPR: The scope of paramters have been set and parameters (self$para) have been reset to be NA.", "\n")
       invisible(self)
     },
     predict = function(){
@@ -138,7 +143,8 @@ GPR <- R6::R6Class(
         k11 <- `diag<-`(k11, diag(k11) + 1)
       }
       # predict
-      self$testing$nsws <- k21 %*% ginv(k11) %*% self$n_sws$nsws
+      self$testing <- dplyr::mutate(self$testing,
+                                    nsws = {k21 %*% ginv(k11) %*% self$n_sws$nsws} |> as.vector())
       # plot
       private$plot_predict()
       invisible(self)
@@ -344,14 +350,125 @@ GPR <- R6::R6Class(
     match_kernel = function(name){
     },
     # ------ plotting functions ------
-    #
-    plot_predict = function(){
+    plot_predict = function(...){
+      if (private$whether_contour) {
+        private$plot_predict_contour(data = self$testing, ...)
+      }else{
+        private$plot_predict_line(...)
+      }
+    },
+    plot_predict_line = function(row = 2){
       self$test_pic <- ggplot() +
         geom_point(data = self$n_sws, mapping = aes(x = nsws, y = z))+
         geom_line(data = self$testing, mapping = aes(x = nsws, y = z),color="#D3323F",orientation = "y")+
         scale_y_reverse()+
-        facet_wrap(~x, nrow = 2)
+        facet_wrap(~x, nrow = row)
       self$test_pic |> print()
+    },
+    plot_predict_contour = function(data, TitleColorbar, TitleX, TitleY, begin_X, max_Z,
+                                    font_family = 'Times New Roman',font_size = 30, width = 1200 , height = 600){
+      XYZtoZ <- function(rawdata){
+        # this function is used to read and tidy data for contour plots (https://plotly.com/r/contour-plots/).
+        # The input data should be a data frame with 3 columns, 
+        # 1st and 2nd columns are for X and Y coordinates, respectively.
+        # 3rd column stands for the Z value you want to plot.
+        # this function convert the Z date to a 2D matrix for function plot_ly in the library(Plotly)
+        # the the file of input data is supposed to be *.csv without header
+        
+        # Arguments
+        # raw data : the input data frame
+        
+        colnames(rawdata)<-c("X","Y","Z")
+        rawdata$X
+        a<-tapply(rawdata$Y, rawdata$X, length)
+        if(any(a!=a[1])){
+          stop("Input data is not a full matrix")
+        }
+        xlen<-length(a)
+        ylen<-a[1]
+        zdata<-matrix(0, nrow = ylen, ncol = xlen)
+        x<-as.numeric(attr(factor(rawdata$X),"levels"))
+        y<-as.numeric(attr(factor(rawdata$Y),"levels"))
+        zdalist<-split(rawdata$Z,rawdata$Y)
+        for (i in 1:ylen) {
+          zdata[i,]<-zdalist[[i]]
+        }
+        outda<-list(Z=zdata,X=x,Y=y)
+        return(outda)
+      }
+      # tidy data
+      DAT <- XYZtoZ(data)
+      #
+      fig_arguments <- list(
+        title_colorbar = "N_sws",
+        title_X = "Horizontal distance (m)",
+        title_Y = "Depth (m)",
+        shifX = 0
+      )
+      if(!missing(TitleColorbar)) fig_arguments$title_colorbar <- TitleColorbar
+      if(!missing(TitleX)) fig_arguments$title_X <- TitleX
+      if(!missing(TitleY)) fig_arguments$title_Y <- TitleY
+      if(!missing(begin_X)) fig_arguments$shifX <- begin_X 
+      # make the Y Axes to begin from 0 at the top
+      Y_min<-min(DAT$Y)
+      DAT$Y<- DAT$Y-Y_min
+      DAT$Y<-rev(DAT$Y)   #reverse the value of Y axes
+      Y_max<-max(DAT$Y)
+      # shift the X axes
+      shif_X <- fig_arguments$shifX
+      DAT$X<-DAT$X+shif_X
+      X_min<-min(DAT$X)
+      # range of Z axes
+      if(missing(max_Z)) max_Z <- max(DAT$Z)
+      Z_max <- max_Z
+      #
+      fig <- plot_ly(
+        type = 'contour',
+        z = DAT$Z,
+        y = DAT$Y,
+        x = DAT$X,
+        autocontour = F,
+        colorscale= list(c(0, 0.33,0.66, 1), c('#FF0000', '#FFFB00', '#339502', '#023AB2')),
+        contours = list(
+          start = 0,
+          end = Z_max,
+          size = Z_max/10,
+          showlines=FALSE
+        ),
+        colorbar=list(
+          title=list(text=fig_arguments$title_colorbar,font=list(size=font_size)),
+          tickfont=list(size=font_size),
+          len=0.9,
+          exponentformat="power"    
+        ),
+        line = list(smoothing = 0)  
+      )
+      font_for_tick <- list(        
+        size = font_size
+      )
+      x <- list(
+        title = fig_arguments$title_X,          
+        titlefont = list(size=font_size),  
+        autotick = FALSE,
+        ticks = "outside",
+        tickmode = "linear",
+        tick0 = X_min,            
+        dtick = 5,                 
+        ticklen = 8,              
+        tickfont = font_for_tick,   
+        tickwidth = 1,              
+        tickcolor = toRGB("black")
+      )
+      y <- list(
+        title=fig_arguments$title_Y,
+        titlefont = list(size=font_size),  
+        ticklen = 5,
+        tickfont = font_for_tick,  
+        tickwidth = 1,
+        range = c(Y_max,0)   
+      )
+      self$test_pic <- fig %>% layout(xaxis = x,yaxis = y,
+                                      font = list(family = font_family ,size= font_size))
     },
     # ------ optimizing functions ------
     prepare_likelihood = function(){
