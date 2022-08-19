@@ -6,7 +6,11 @@ library(foreach)
 library(iterators)
 library(R6)
 library(tidyverse)
-
+library(plotly)
+#
+# How to use: 
+# 'new("file name")' -> 'set_parameter' or 'set_par_scope'  -> 'create_mesh'
+# -> 'opt' -> 'predict'
 GPR <- R6::R6Class(
   classname = "GPR",
   public = list(
@@ -19,7 +23,6 @@ GPR <- R6::R6Class(
     raw_pic = NA,
     test_pic = NA,
     ##
-    testvar = NULL,
     #
     initialize = function(data_file){
       if(rlang::is_missing(data_file)){
@@ -53,6 +56,7 @@ GPR <- R6::R6Class(
         dplyr::arrange(x)
       if (size_h <= 0) {
         depth <- depth_raw
+        private$whether_contour <- FALSE
       }else{
         x_denser <- private$divide_KP(points = depth_raw$x, size = size_h)
         depth <- data.frame(x = x_denser,
@@ -60,6 +64,8 @@ GPR <- R6::R6Class(
                             max = private$lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
         if (nrow(depth) > nrow(depth_raw)) {
           private$whether_contour <- TRUE
+        }else{
+          private$whether_contour <- FALSE
         }
       }
       self$testing <- as.list(depth) |> 
@@ -96,10 +102,12 @@ GPR <- R6::R6Class(
         names(self$para) <- private$para_name
         private$whether_nu <- TRUE
         private$kernel_fun <- "kernel_wm"
+        cat("GPR: WM model will be used.", "\n")
       }else{
         self$para <- c(sof_h_t, sof_v_t, sd_t,sof_h_r, sof_v_r, sd_r)
         names(self$para) <- private$para_name_nonu
         private$whether_nu <- FALSE
+        private$kernel_fun <- "kernel_g"
       }
       private$whether_set_parameter <- TRUE
       private$para_ini <- self$para
@@ -115,11 +123,13 @@ GPR <- R6::R6Class(
         par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu)
         private$whether_nu <- TRUE
         private$kernel_fun <- "kernel_wm"
+        cat("GPR: WM model will be used.", "\n")
       }else{
         self$para <- c(NA, NA, NA, NA, NA, NA)
         names(self$para) <- private$para_name_nonu
         par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
         private$whether_nu <- FALSE
+        private$kernel_fun <- "kernel_g"
       }
       # Check the argument format.
       if (!purrr::every(par_scope, ~length(.x)== 2)) {
@@ -146,7 +156,9 @@ GPR <- R6::R6Class(
       self$testing <- dplyr::mutate(self$testing,
                                     nsws = {k21 %*% ginv(k11) %*% self$n_sws$nsws} |> as.vector())
       # plot
-      private$plot_predict()
+      self$plot_predict()
+      #
+      private$repdict_log()
       invisible(self)
     },
     opt = function(mode){
@@ -159,6 +171,17 @@ GPR <- R6::R6Class(
       )
       cat("Parameters have been optimized.", "\n")
       invisible(self)
+    },
+    set_plot_lines = function(L = TRUE){
+      private$whether_contour <- !L
+      invisible(self)
+    },
+    plot_predict = function(...){
+      if (private$whether_contour) {
+        private$plot_predict_contour(data = self$testing, ...)
+      }else{
+        private$plot_predict_line(...)
+      }
     }
   ),
   #
@@ -350,19 +373,12 @@ GPR <- R6::R6Class(
     match_kernel = function(name){
     },
     # ------ plotting functions ------
-    plot_predict = function(...){
-      if (private$whether_contour) {
-        private$plot_predict_contour(data = self$testing, ...)
-      }else{
-        private$plot_predict_line(...)
-      }
-    },
-    plot_predict_line = function(row = 2){
+    plot_predict_line = function(nrow = 2){
       self$test_pic <- ggplot() +
         geom_point(data = self$n_sws, mapping = aes(x = nsws, y = z))+
         geom_line(data = self$testing, mapping = aes(x = nsws, y = z),color="#D3323F",orientation = "y")+
         scale_y_reverse()+
-        facet_wrap(~x, nrow = row)
+        facet_wrap(~x, nrow = nrow)
       self$test_pic |> print()
     },
     plot_predict_contour = function(data, TitleColorbar, TitleX, TitleY, begin_X, max_Z,
@@ -393,11 +409,14 @@ GPR <- R6::R6Class(
         for (i in 1:ylen) {
           zdata[i,]<-zdalist[[i]]
         }
-        outda<-list(Z=zdata,X=x,Y=y)
+        outda<-list(z=zdata,x=x,y=y)
         return(outda)
       }
       # tidy data
-      DAT <- XYZtoZ(data)
+      #DAT <- XYZtoZ(data)
+      DAT <- interp::interp(x = data$x, y = data$z, z = data$nsws, 
+                            nx = 200, ny = 50, method="linear")
+      DAT$z <- t(DAT$z)
       #
       fig_arguments <- list(
         title_colorbar = "N_sws",
@@ -410,30 +429,30 @@ GPR <- R6::R6Class(
       if(!missing(TitleY)) fig_arguments$title_Y <- TitleY
       if(!missing(begin_X)) fig_arguments$shifX <- begin_X 
       # make the Y Axes to begin from 0 at the top
-      Y_min<-min(DAT$Y)
-      DAT$Y<- DAT$Y-Y_min
-      DAT$Y<-rev(DAT$Y)   #reverse the value of Y axes
-      Y_max<-max(DAT$Y)
+      Y_min<-min(DAT$y)
+      DAT$y<- DAT$y-Y_min
+      #DAT$y<-rev(DAT$y)   #reverse the value of Y axes
+      Y_max<-max(DAT$y)
       # shift the X axes
       shif_X <- fig_arguments$shifX
-      DAT$X<-DAT$X+shif_X
-      X_min<-min(DAT$X)
+      DAT$x<-DAT$x+shif_X
+      X_min<-min(DAT$x)
       # range of Z axes
-      if(missing(max_Z)) max_Z <- max(DAT$Z)
+      if(missing(max_Z)) max_Z <- max(DAT$z)
       Z_max <- max_Z
       #
       fig <- plot_ly(
         type = 'contour',
-        z = DAT$Z,
-        y = DAT$Y,
-        x = DAT$X,
+        z = DAT$z,
+        y = DAT$y,
+        x = DAT$x,
         autocontour = F,
         colorscale= list(c(0, 0.33,0.66, 1), c('#FF0000', '#FFFB00', '#339502', '#023AB2')),
         contours = list(
           start = 0,
           end = Z_max,
           size = Z_max/10,
-          showlines=FALSE
+          showlines = FALSE
         ),
         colorbar=list(
           title=list(text=fig_arguments$title_colorbar,font=list(size=font_size)),
@@ -453,7 +472,7 @@ GPR <- R6::R6Class(
         ticks = "outside",
         tickmode = "linear",
         tick0 = X_min,            
-        dtick = 5,                 
+        dtick = 10,                 
         ticklen = 8,              
         tickfont = font_for_tick,   
         tickwidth = 1,              
@@ -467,8 +486,9 @@ GPR <- R6::R6Class(
         tickwidth = 1,
         range = c(Y_max,0)   
       )
-      self$test_pic <- fig %>% layout(xaxis = x,yaxis = y,
+      self$test_pic <- fig %>% layout(xaxis = x, yaxis = y,
                                       font = list(family = font_family ,size= font_size))
+      self$test_pic |> print()
     },
     # ------ optimizing functions ------
     prepare_likelihood = function(){
@@ -530,6 +550,13 @@ GPR <- R6::R6Class(
         cat("\n")
         res
       }
+    },
+    #
+    repdict_log = function(){
+      cat("GPR: Prediction has been done. you can check the result through '$testing'.", "\n")
+      cat("     Kernel function: ", private$kernel_fun, "\n", sep = "")
+      cat("     Parameters: ", "\n", sep = "")
+      print(self$para)
     }
   )
 )
