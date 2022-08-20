@@ -162,7 +162,7 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     opt = function(mode){
-      stopifnot(whether_mesh)
+      stopifnot(private$whether_mesh)
       private$prepare_likelihood()
       match.arg(mode, c("BFGS", "GA"))
       switch (mode,
