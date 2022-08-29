@@ -7,6 +7,7 @@ library(iterators)
 library(R6)
 library(tidyverse)
 library(plotly)
+library(interp)
 #
 # How to use: 
 # 'new("file name")' -> 'set_parameter' or 'set_par_scope'  -> 'create_mesh'
