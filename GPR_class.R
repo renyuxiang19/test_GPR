@@ -34,16 +34,10 @@ GPR <- R6::R6Class(
         self$n_sws = private$read_MAIC(data_file) |> 
           dplyr::mutate(y=0) |>
           tibble::rowid_to_column("ID") |>
-          dplyr::select(-ID)|>
-          dplyr::filter(-1 < x & x < 200)
+          dplyr::select(-ID)
         # Plot raw data.
-        self$raw_pic = ggplot2::ggplot(data=self$n_sws)+
-          geom_point(mapping = aes(x=nsws,y=z))+
-          geom_line(mapping = aes(x=nsws,y=z),orientation = "y")+
-          scale_y_reverse()+
-          facet_wrap(~x, nrow = 2)
-        print(self$raw_pic)
-        writeLines("GPR: Plot the raw data.")
+        private$plot_raw()
+        writeLines("GPR: Data has been read. Please create a mesh.")
       }else{stop("Error in GPR: please use the name (string) to specify a file (MAIC).")}
       invisible(self)
     },
@@ -143,6 +137,25 @@ GPR <- R6::R6Class(
       cat("GPR: The scope of paramters have been set and parameters (self$para) have been reset to be NA.", "\n")
       invisible(self)
     },
+    #
+    set_limit_x = function(scope){
+      if (is.numeric(scope) & length(scope) == 2) {
+        private$limit_x[1] <- min(scope)
+        private$limit_x[2] <- max(scope)
+        self$n_sws <-  self$n_sws |> 
+          dplyr::filter(private$limit_x[1] < x & x < private$limit_x[2])
+        private$plot_raw()
+        #
+        if (private$whether_mesh == TRUE) {
+          private$whether_mesh <- FALSE
+          cat("GPR: Limit of x has been set. Please create a new mesh once again.", "\n")
+        }else{cat("GPR: Limit of x has been set. Please create a mesh.", "\n")}
+      }else{
+        cat("Error in GPR: please set the upper and lower limit of x by a length 2 numerical vector.", "\n")
+      }
+      invisible(self)
+    },
+    #
     predict = function(){
       private$check_predict()
       make_k <- private$createfunc_make_k(private$whether_nu)
@@ -183,11 +196,16 @@ GPR <- R6::R6Class(
       }else{
         private$plot_predict_line(...)
       }
+      invisible(self)
+    },
+    plot_silent = function(logic){
+        private$silent <- logic
     }
   ),
   #
   private = list(
     kernel_fun = "kernel_g",
+    limit_x = c(-1,200),
     sof_h_t = NA,
     sof_v_t = NA,
     sd_t = NA,
@@ -210,6 +228,7 @@ GPR <- R6::R6Class(
     whether_set_parameter = FALSE,
     whether_set_scope = FALSE,
     whether_contour = FALSE,
+    silent = FALSE,
     ######################### Pure Functions ##############################
     # Read data from a file. 
     read_MAIC = function(file_name){
@@ -364,57 +383,41 @@ GPR <- R6::R6Class(
        }
      }else{
        if (private$whether_nu  == TRUE) {
-         warning("GPR: you set a value of nu without using WM model.")
+         warning("Warning in GPR: you set a value of nu without using WM model.")
        }
      }
      if(!private$whether_mesh){
-       stop("Error in GPR: please use 'create_mesh' to creat mesh.")
+       stop("Error in GPR: please use 'create_mesh' to creat a mesh before predicting.")
      }
     },
-    match_kernel = function(name){
-    },
     # ------ plotting functions ------
+    #
+    plot_raw = function(){
+      self$raw_pic = ggplot2::ggplot(data=self$n_sws)+
+        geom_point(mapping = aes(x=nsws,y=z))+
+        geom_line(mapping = aes(x=nsws,y=z),orientation = "y")+
+        scale_y_reverse()+
+        facet_wrap(~x, nrow = 2)
+      if (!private$silent) {
+        print(self$raw_pic)
+      }
+    },
+    #
     plot_predict_line = function(nrow = 2){
       self$test_pic <- ggplot() +
         geom_point(data = self$n_sws, mapping = aes(x = nsws, y = z))+
         geom_line(data = self$testing, mapping = aes(x = nsws, y = z),color="#D3323F",orientation = "y")+
         scale_y_reverse()+
         facet_wrap(~x, nrow = nrow)
-      self$test_pic |> print()
+      #
+      if (!private$silent) {
+        self$test_pic |> print()
+      }
     },
+    #
     plot_predict_contour = function(data, TitleColorbar, TitleX, TitleY, begin_X, max_Z,
                                     font_family = 'Times New Roman',font_size = 30, width = 1200 , height = 600){
-      XYZtoZ <- function(rawdata){
-        # this function is used to read and tidy data for contour plots (https://plotly.com/r/contour-plots/).
-        # The input data should be a data frame with 3 columns, 
-        # 1st and 2nd columns are for X and Y coordinates, respectively.
-        # 3rd column stands for the Z value you want to plot.
-        # this function convert the Z date to a 2D matrix for function plot_ly in the library(Plotly)
-        # the the file of input data is supposed to be *.csv without header
-        
-        # Arguments
-        # raw data : the input data frame
-        
-        colnames(rawdata)<-c("X","Y","Z")
-        rawdata$X
-        a<-tapply(rawdata$Y, rawdata$X, length)
-        if(any(a!=a[1])){
-          stop("Input data is not a full matrix")
-        }
-        xlen<-length(a)
-        ylen<-a[1]
-        zdata<-matrix(0, nrow = ylen, ncol = xlen)
-        x<-as.numeric(attr(factor(rawdata$X),"levels"))
-        y<-as.numeric(attr(factor(rawdata$Y),"levels"))
-        zdalist<-split(rawdata$Z,rawdata$Y)
-        for (i in 1:ylen) {
-          zdata[i,]<-zdalist[[i]]
-        }
-        outda<-list(z=zdata,x=x,y=y)
-        return(outda)
-      }
-      # tidy data
-      #DAT <- XYZtoZ(data)
+      #
       DAT <- interp::interp(x = data$x, y = data$z, z = data$nsws, 
                             nx = 200, ny = 50, method="linear")
       DAT$z <- t(DAT$z)
@@ -489,7 +492,10 @@ GPR <- R6::R6Class(
       )
       self$test_pic <- fig %>% layout(xaxis = x, yaxis = y,
                                       font = list(family = font_family ,size= font_size))
-      self$test_pic |> print()
+      #
+      if (!private$silent) {
+        self$test_pic |> print()
+      }
     },
     # ------ optimizing functions ------
     prepare_likelihood = function(){
@@ -516,15 +522,15 @@ GPR <- R6::R6Class(
     #
     opt_bfgs = function(par, func){
       if (!private$whether_set_parameter) {
-        stop("Error in GPR: pleas set initial parameters before using BFGS to optimize them. (using 'set_parameter')")
+        stop("Error in GPR: pleas set initial parameters before using BFGS to optimize them. ($set_parameter)")
       }
       func <- private$more_info(func = func)
-      opt <- optimx(par, func, method = "BFGS")
+      try(opt <- optimx(par, func, method = "BFGS"))
     },
     #
     opt_ga = function(lower, upper, func){
       if (!private$whether_set_scope) {
-        stop("Error in GPR: pleas set the scope of each parameter before using GA to optimize them. (using 'set_par_scope')")
+        stop("Error in GPR: pleas set the scope of each parameter before using GA to optimize them. ($set_par_scope)")
       }
       out_ga2 <- GA::ga(type = "real-valued", fitness = func, 
                         lower = lower, upper = upper,
@@ -537,8 +543,8 @@ GPR <- R6::R6Class(
     },
     #
     more_info = function(func){
-      # used for likelihood function. 
-      # Write the argument into 'self$para' and record the time the function has been run.
+      # A function operator used for likelihood function. 
+      # Write the argument into 'self$para' and record the time that the function has been run.
       force(func)
       time <- 0
       function(x, ...){
@@ -546,7 +552,7 @@ GPR <- R6::R6Class(
         names(res) <- NULL
         self$para <- x
         time <<- time + 1
-        cat("BFGS | iter = ", time, " | The parameters are: ", "\n" ,sep = "")
+        cat("BFGS | iter = ", time, " | parameters: ", "\n" ,sep = "")
         print(x)
         cat("\n")
         res
