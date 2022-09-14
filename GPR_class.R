@@ -23,6 +23,8 @@ GPR <- R6::R6Class(
     ## Fig objects
     raw_pic = NA,
     test_pic = NA,
+    ## opt result
+    ga_result = NULL,
     ##
     #
     initialize = function(data_file){
@@ -35,6 +37,7 @@ GPR <- R6::R6Class(
           dplyr::mutate(y=0) |>
           tibble::rowid_to_column("ID") |>
           dplyr::select(-ID)
+        private$raw_n_sws <- self$n_sws
         # Plot raw data.
         private$plot_raw()
         writeLines("GPR: Data has been read. Please create a mesh.")
@@ -134,6 +137,7 @@ GPR <- R6::R6Class(
       private$upper <- par_scope |> purrr::map_dbl(max)
       private$lower <- par_scope |> purrr::map_dbl(min)
       private$whether_set_scope <- TRUE
+      private$whether_set_parameter <- FALSE
       cat("GPR: The scope of paramters have been set and parameters (self$para) have been reset to be NA.", "\n")
       invisible(self)
     },
@@ -142,7 +146,7 @@ GPR <- R6::R6Class(
       if (is.numeric(scope) & length(scope) == 2) {
         private$limit_x[1] <- min(scope)
         private$limit_x[2] <- max(scope)
-        self$n_sws <-  self$n_sws |> 
+        self$n_sws <-  private$raw_n_sws |> 
           dplyr::filter(private$limit_x[1] < x & x < private$limit_x[2])
         private$plot_raw()
         #
@@ -205,6 +209,7 @@ GPR <- R6::R6Class(
   #
   private = list(
     kernel_fun = "kernel_g",
+    raw_n_sws = NULL,
     limit_x = c(-1,200),
     sof_h_t = NA,
     sof_v_t = NA,
@@ -377,6 +382,9 @@ GPR <- R6::R6Class(
      if(purrr::some(self$para, is.na)){
        stop("Error in GPR: pleas use 'set_parameter' method to set ALL parameters (set nu only when you want to use WM model).")
      }
+     if(!private$whether_set_parameter){
+       stop("Error in GPR: it seems that the opt method has been interrupted for some reason. Please set the parameters or optimize them once more.")
+     }
      if(private$kernel_fun == "kernel_wm"){
        if (private$whether_nu  == FALSE) {
          stop("Error in GPR: you have not set the initial value of parameter nu.")
@@ -480,7 +488,8 @@ GPR <- R6::R6Class(
         ticklen = 8,              
         tickfont = font_for_tick,   
         tickwidth = 1,              
-        tickcolor = toRGB("black")
+        tickcolor = toRGB("black"),
+        zeroline = FALSE
       )
       y <- list(
         title=fig_arguments$title_Y,
@@ -488,7 +497,7 @@ GPR <- R6::R6Class(
         ticklen = 5,
         tickfont = font_for_tick,  
         tickwidth = 1,
-        range = c(Y_max,0)   
+        range = c(Y_max,0)
       )
       self$test_pic <- fig %>% layout(xaxis = x, yaxis = y,
                                       font = list(family = font_family ,size= font_size))
@@ -532,12 +541,13 @@ GPR <- R6::R6Class(
       if (!private$whether_set_scope) {
         stop("Error in GPR: pleas set the scope of each parameter before using GA to optimize them. ($set_par_scope)")
       }
-      out_ga2 <- GA::ga(type = "real-valued", fitness = func, 
+      private$whether_set_parameter <- FALSE # If GA was interrupted, users can not predict with the initial parameters.
+      self$ga_result <- GA::ga(type = "real-valued", fitness = func, 
                         lower = lower, upper = upper,
                         popSize = 120, maxiter = 100, run = 20, parallel = 7,
                         optim = FALSE)
       name_para <- names(self$para)
-      self$para <- out_ga2@solution[1,] |> as.numeric()
+      self$para <- self$ga_result@solution[1,] |> as.numeric()
       names(self$para) <- name_para
       private$whether_set_parameter <- TRUE
     },
