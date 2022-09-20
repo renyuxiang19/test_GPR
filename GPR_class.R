@@ -45,7 +45,7 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     #
-    create_mesh = function(size_v = 0.1, size_h = 0){
+    create_mesh = function(size_v = 0.2, size_h = 0){
       # Prepare testing data (mesh).
       depth_raw <- self$n_sws |> 
         dplyr::group_by(x) |> 
@@ -544,7 +544,7 @@ GPR <- R6::R6Class(
       private$whether_set_parameter <- FALSE # If GA was interrupted, users can not predict with the initial parameters.
       self$ga_result <- GA::ga(type = "real-valued", fitness = func, 
                         lower = lower, upper = upper,
-                        popSize = 120, maxiter = 100, run = 20, parallel = 7,
+                        popSize = 120, maxiter = 100, run = 20, parallel = TRUE,
                         optim = FALSE)
       name_para <- names(self$para)
       self$para <- self$ga_result@solution[1,] |> as.numeric()
