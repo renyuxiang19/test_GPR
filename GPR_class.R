@@ -1,5 +1,4 @@
 library(MASS)
-library(optimx)
 library(GA)
 library(doParallel)
 library(foreach)
