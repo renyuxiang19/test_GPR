@@ -24,7 +24,8 @@ GPR <- R6::R6Class(
     raw_pic = NA,
     test_pic = NA,
     ## opt result
-    ga_result = NULL,
+    result_ga = NULL,
+    result_BFGS = NULL,
     ##
     #
     initialize = function(data_file){
@@ -116,14 +117,14 @@ GPR <- R6::R6Class(
     set_par_scope = function(sof_h_t,sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu){
       # Check if nu is used.
       if (!rlang::is_missing(nu)) {
-        self$para <- c(NA, NA, NA, NA, NA, NA, NA) 
+        # self$para <- c(NA, NA, NA, NA, NA, NA, NA) 
         names(self$para) <- private$para_name
         par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu)
         private$whether_nu <- TRUE
         private$kernel_fun <- "kernel_wm"
         cat("GPR: WM model will be used.", "\n")
       }else{
-        self$para <- c(NA, NA, NA, NA, NA, NA)
+        # self$para <- c(NA, NA, NA, NA, NA, NA)
         names(self$para) <- private$para_name_nonu
         par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
         private$whether_nu <- FALSE
@@ -137,8 +138,8 @@ GPR <- R6::R6Class(
       private$upper <- par_scope |> purrr::map_dbl(max)
       private$lower <- par_scope |> purrr::map_dbl(min)
       private$whether_set_scope <- TRUE
-      private$whether_set_parameter <- FALSE
-      cat("GPR: The scope of paramters have been set and parameters (self$para) have been reset to be NA.", "\n")
+      # private$whether_set_parameter <- FALSE
+      # cat("GPR: The scope of paramters have been set and parameters (self$para) have been reset to be NA.", "\n")
       invisible(self)
     },
     #
@@ -184,7 +185,8 @@ GPR <- R6::R6Class(
       private$prepare_likelihood()
       match.arg(mode, c("BFGS", "GA"))
       switch (mode,
-              BFGS = private$opt_bfgs(par = self$para, func = private$ln_likelihood),
+              BFGS = private$opt_bfgs(par = self$para, func = private$ln_likelihood,
+                                      lower = private$lower, upper = private$upper),
               GA = private$opt_ga(lower = private$lower, upper = private$upper, func = private$ln_likelihood)
       )
       cat("Parameters have been optimized.", "\n")
@@ -233,6 +235,7 @@ GPR <- R6::R6Class(
     whether_set_parameter = FALSE,
     whether_set_scope = FALSE,
     whether_contour = FALSE,
+    whether_opt = 0, 
     silent = FALSE,
     ######################### Pure Functions ##############################
     # Read data from a file. 
@@ -529,25 +532,28 @@ GPR <- R6::R6Class(
       return(f)
     },
     #
-    opt_bfgs = function(par, func){
+    opt_bfgs = function(par, func, lower, upper){
       if (!private$whether_set_parameter) {
-        stop("Error in GPR: pleas set initial parameters before using BFGS to optimize them. ($set_parameter)")
+        stop("Error in GPR: pleas set initial parameters before using L-BFGS-B. ($set_parameter)")
+      }
+      if (!private$whether_set_scope) {
+        stop("Error in GPR: pleas set the scope of each parameter before using L-BFGS-B. ($set_par_scope)")
       }
       func <- private$more_info(func = func)
-      try(opt <- optimx(par, func, method = "BFGS"))
+      try(self$result_BFGS <- optim(par, func, method = "L-BFGS-B", lower = lower, upper = upper))
     },
     #
     opt_ga = function(lower, upper, func){
       if (!private$whether_set_scope) {
-        stop("Error in GPR: pleas set the scope of each parameter before using GA to optimize them. ($set_par_scope)")
+        stop("Error in GPR: pleas set the scope of each parameter before using GA. ($set_par_scope)")
       }
       private$whether_set_parameter <- FALSE # If GA was interrupted, users can not predict with the initial parameters.
-      self$ga_result <- GA::ga(type = "real-valued", fitness = func, 
+      self$result_ga <- GA::ga(type = "real-valued", fitness = func, 
                         lower = lower, upper = upper,
-                        popSize = 120, maxiter = 100, run = 20, parallel = TRUE,
+                        popSize = 120, maxiter = 100, run = 20, parallel = 8,
                         optim = FALSE)
       name_para <- names(self$para)
-      self$para <- self$ga_result@solution[1,] |> as.numeric()
+      self$para <- self$result_ga@solution[1,] |> as.numeric()
       names(self$para) <- name_para
       private$whether_set_parameter <- TRUE
     },
@@ -562,7 +568,7 @@ GPR <- R6::R6Class(
         names(res) <- NULL
         self$para <- x
         time <<- time + 1
-        cat("BFGS | iter = ", time, " | parameters: ", "\n" ,sep = "")
+        cat("L-BFGS-B | iter = ", time, " | parameters: ", "\n" ,sep = "")
         print(x)
         cat("\n")
         res
