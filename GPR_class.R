@@ -66,13 +66,15 @@ GPR <- R6::R6Class(
           private$whether_contour <- FALSE
         }
       }
-      self$testing <- as.list(depth) |> 
+      z_raw_mesh <- list(x= depth$x, kp_z = split(self$n_sws$z, self$n_sws$x))
+      self$testing <- z_raw_mesh |> 
         rlang::set_names(NULL) |>
-        purrr::pmap_dfr(function(dis, min, max){
-          value <- seq(min, max, by = size_v)
+        purrr::pmap_dfr(function(dis, kp){
+          kp <- unlist(kp)
+          value <- private$divide_KP(points = kp, size = size_v)
           len <- length(value)
-          tibble::tibble(x = rep(dis,times = len), z = value)
-        }) |>
+          tibble::tibble(x = rep(dis, times = len), z = value)
+        })|>
         mutate(y=0)
       private$whether_mesh <- TRUE
       cat("GPR: Mesh has been created.", "\n")
