@@ -45,29 +45,48 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     #
-    create_mesh = function(size_v = 0.2, size_h = 0){
+    create_mesh = function(size_v = 0, size_h = 0){
+      # if "size_v" <= 0 and 
       # Prepare testing data (mesh).
       depth_raw <- self$n_sws |> 
         dplyr::group_by(x) |> 
         dplyr::summarise(min_depth = min(z), max_depth = max(z)) |>
         dplyr::ungroup() |>
         dplyr::arrange(x)
-      if (size_h <= 0) {
-        depth <- depth_raw
-        private$whether_contour <- FALSE
+      # Calculate the unobserved points according to the "size_h" argument.
+      x_denser <- private$divide_KP(points = depth_raw$x, size = size_h)
+      depth <- data.frame(x = x_denser,
+                          min = private$lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
+                          max = private$lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
+      # Determine the default type of result figure.
+      if (nrow(depth) > nrow(depth_raw)) {
+        private$whether_contour <- TRUE
       }else{
-        x_denser <- private$divide_KP(points = depth_raw$x, size = size_h)
-        depth <- data.frame(x = x_denser,
-                            min = private$lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
-                            max = private$lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
-        if (nrow(depth) > nrow(depth_raw)) {
-          private$whether_contour <- TRUE
-        }else{
-          private$whether_contour <- FALSE
-        }
+        private$whether_contour <- FALSE
       }
-      z_raw_mesh <- list(x= depth$x, kp_z = split(self$n_sws$z, self$n_sws$x))
-      self$testing <- z_raw_mesh |> 
+      #  Calculate the mean of interval on the vertical. 
+      #  It will be used for unobserved points when user do not assign a vertical mesh size.
+      if (size_v <= 0 & size_h > 0) {
+        size_v_ex <- self$n_sws |> dplyr::group_by(x) |> 
+          dplyr::summarise(dif= diff(z) %>% mean()) |>
+          dplyr::ungroup() |>
+          dplyr::select(dif) |>
+          unlist() |> mean()
+      }else{
+        size_v_ex <- size_v
+      }
+      # Calculate mesh of unobserved points
+      mesh_ex <- dplyr::filter(depth,!(x %in% depth_raw$x)) |> 
+        as.list()|>
+        rlang::set_names(NULL) |>
+        purrr::pmap_dfr(function(dis, min, max){
+          value <- seq(min, max, by = size_v_ex)
+          len <- length(value)
+          tibble::tibble(x = rep(dis,times = len), z = value)
+        }) |>
+        dplyr::mutate(y=0)
+      # Create mesh of observed points.
+      mesh_raw <- list(x= depth_raw$x, kp_z = split(self$n_sws$z, self$n_sws$x)) |> 
         rlang::set_names(NULL) |>
         purrr::pmap_dfr(function(dis, kp){
           kp <- unlist(kp)
@@ -75,7 +94,11 @@ GPR <- R6::R6Class(
           len <- length(value)
           tibble::tibble(x = rep(dis, times = len), z = value)
         })|>
-        mutate(y=0)
+        dplyr::mutate(y=0)
+      # bind the 2 kinds of meshes.
+      self$testing <- bind_rows(mesh_raw, mesh_ex) |> 
+        dplyr::arrange(x,z)
+      #
       private$whether_mesh <- TRUE
       cat("GPR: Mesh has been created.", "\n")
       invisible(self)
@@ -118,15 +141,19 @@ GPR <- R6::R6Class(
     set_par_scope = function(sof_h_t,sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu){
       # Check if nu is used.
       if (!rlang::is_missing(nu)) {
-        # self$para <- c(NA, NA, NA, NA, NA, NA, NA) 
-        names(self$para) <- private$para_name
+        if (!private$whether_set_parameter) { 
+          self$para <- c(NA, NA, NA, NA, NA, NA, NA)
+          names(self$para) <- private$para_name
+        }
         par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r, nu)
         private$whether_nu <- TRUE
         private$kernel_fun <- "kernel_wm"
         cat("GPR: WM model will be used.", "\n")
       }else{
-        # self$para <- c(NA, NA, NA, NA, NA, NA)
-        names(self$para) <- private$para_name_nonu
+        if (!private$whether_set_parameter) {
+          self$para <- c(NA, NA, NA, NA, NA, NA)
+          names(self$para) <- private$para_name_nonu
+        }
         par_scope <- list(sof_h_t, sof_v_t, sd_t, sof_h_r, sof_v_r, sd_r)
         private$whether_nu <- FALSE
         private$kernel_fun <- "kernel_g"
@@ -140,7 +167,7 @@ GPR <- R6::R6Class(
       private$lower <- par_scope |> purrr::map_dbl(min)
       private$whether_set_scope <- TRUE
       # private$whether_set_parameter <- FALSE
-      # cat("GPR: The scope of paramters have been set and parameters (self$para) have been reset to be NA.", "\n")
+      # cat("GPR: The scope of parameters have been set and parameters (self$para) have been reset to be NA.", "\n")
       invisible(self)
     },
     #
@@ -163,13 +190,13 @@ GPR <- R6::R6Class(
     },
     #
     predict = function(){
-      private$check_predict()
-      make_k <- private$createfunc_make_k(private$whether_nu)
-      kernel_function <- get(private$kernel_fun, envir = private)
+      private$check_predict() # Check the condition for prediction.
+      make_k <- private$createfunc_make_k(private$whether_nu)   # This is a function to create K matrix.
+      kernel_function <- get(private$kernel_fun, envir = private)  # get the kernel function according to its name.
       # Calculate covariance matrices of trend component.
       k11 <- make_k(self$para[-c(4:6)], cm1 = self$n_sws, cm2 = self$n_sws, kernel = kernel_function) 
       k21 <- make_k(self$para[-c(4:6)], cm1 = self$testing, cm2 = self$n_sws, kernel = kernel_function) 
-      if (private$noise){
+      if (private$noise){                      #add noise
         k11 <- `diag<-`(k11, diag(k11) + 1)
       }
       # predict
@@ -177,7 +204,7 @@ GPR <- R6::R6Class(
                                     nsws = {k21 %*% ginv(k11) %*% self$n_sws$nsws} |> as.vector())
       # plot
       self$plot_predict()
-      #
+      # output log on screen.
       private$repdict_log()
       invisible(self)
     },
@@ -359,18 +386,22 @@ GPR <- R6::R6Class(
     },
     #
     divide_KP = function(points, size){
-      # divide by key points. Those key points will be kept.
-      # find the intervals.
-      points_lag <- points[-length(points)]
-      points <- points[-1]
-      interval <- {points - points_lag} |> abs()
-      # divide each interval and round it up.
-      division <- {interval / size} |> ceiling()
-      # calculate points in each interval.
-      points_new <- list(points_lag, points, division) |>
-        purrr::pmap(function(start, end, number){
-          seq(start, end, length = number + 1)
-        }) |> unlist() |> unique()
+      if (size <= 0) {
+        points_new <- points
+      }else{
+        # divide by key points. Those key points will be kept.
+        # find the intervals.
+        points_lag <- points[-length(points)]
+        points <- points[-1]
+        interval <- {points - points_lag} |> abs()
+        # divide each interval and round it up.
+        division <- {interval / size} |> ceiling()
+        # calculate points in each interval.
+        points_new <- list(points_lag, points, division) |>
+          purrr::pmap(function(start, end, number){
+            seq(start, end, length = number + 1)
+          }) |> unlist() |> unique()
+      }
       return(points_new)
     },
     #
@@ -528,7 +559,7 @@ GPR <- R6::R6Class(
       k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.1)
       f <- -0.5 * t(private$z) %*% ginv(k11*k11_r_pivot) %*% private$z - 
         0.5 *(log(k11_r_pivot) * nrow(k11)+ log(det(k11))) + private$thirdterm
-      #f <- -f
+      # f <- -f
       f <- as.numeric(f)
       return(f)
     },
@@ -540,7 +571,7 @@ GPR <- R6::R6Class(
       if (!private$whether_set_scope) {
         stop("Error in GPR: pleas set the scope of each parameter before using L-BFGS-B. ($set_par_scope)")
       }
-      func <- private$more_info(func = func)
+      func <- func |> private$more_info()
       try(self$result_BFGS <- optim(par, func, method = "L-BFGS-B", lower = lower, upper = upper))
     },
     #
@@ -562,6 +593,7 @@ GPR <- R6::R6Class(
     more_info = function(func){
       # A function operator used for likelihood function. 
       # Write the argument into 'self$para' and record the time that the function has been run.
+      # The value will be reversed for optimizing.
       force(func)
       time <- 0
       function(x, ...){
@@ -572,9 +604,15 @@ GPR <- R6::R6Class(
         cat("L-BFGS-B | iter = ", time, " | parameters: ", "\n" ,sep = "")
         print(x)
         cat("\n")
-        res
+        -res
       }
     },
+    # reverse_naga = function(func){
+    #   function(...){
+    #     res <- func(...)
+    #     return(-res)
+    #   }
+    # },
     #
     repdict_log = function(){
       cat("GPR: Prediction has been done. you can check the result through '$testing'.", "\n")
