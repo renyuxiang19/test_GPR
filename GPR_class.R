@@ -27,10 +27,11 @@ GPR <- R6::R6Class(
     result_BFGS = NULL,
     ##
     #
-    initialize = function(data_file){
+    initialize = function(data_file, plot_silent = FALSE){
       if(rlang::is_missing(data_file)){
         stop("Error in GPR: please specify a file (MAIC) to read data.")
       }
+      self$plot_silent(plot_silent)
       # Read data.
       if (is.character(data_file)){
         self$n_sws = private$read_MAIC(data_file) |> 
@@ -166,8 +167,7 @@ GPR <- R6::R6Class(
       private$upper <- par_scope |> purrr::map_dbl(max)
       private$lower <- par_scope |> purrr::map_dbl(min)
       private$whether_set_scope <- TRUE
-      # private$whether_set_parameter <- FALSE
-      # cat("GPR: The scope of parameters have been set and parameters (self$para) have been reset to be NA.", "\n")
+      cat("GPR: The scope of parameters have been set.", "\n")
       invisible(self)
     },
     #
@@ -212,12 +212,13 @@ GPR <- R6::R6Class(
       stopifnot(private$whether_mesh)
       private$prepare_likelihood()
       match.arg(mode, c("BFGS", "GA"))
+      cat("GPR: Start to optimize parameters by ",mode," ...",sep = "", "\n")
       switch (mode,
               BFGS = private$opt_bfgs(par = self$para, func = private$ln_likelihood,
                                       lower = private$lower, upper = private$upper),
               GA = private$opt_ga(lower = private$lower, upper = private$upper, func = private$ln_likelihood)
       )
-      cat("Parameters have been optimized.", "\n")
+      cat("GPR: Parameters have been optimized.", "\n")
       invisible(self)
     },
     set_plot_lines = function(L = TRUE){
@@ -582,7 +583,7 @@ GPR <- R6::R6Class(
       private$whether_set_parameter <- FALSE # If GA was interrupted, users can not predict with the initial parameters.
       self$result_ga <- GA::ga(type = "real-valued", fitness = func, 
                         lower = lower, upper = upper,
-                        popSize = 120, maxiter = 100, run = 20, parallel = 8,
+                        popSize = 120, maxiter = 100, run = 20, parallel = TRUE,
                         optim = FALSE)
       name_para <- names(self$para)
       self$para <- self$result_ga@solution[1,] |> as.numeric()
