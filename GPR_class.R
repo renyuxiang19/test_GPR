@@ -607,13 +607,6 @@ GPR <- R6::R6Class(
         -res
       }
     },
-    # reverse_naga = function(func){
-    #   function(...){
-    #     res <- func(...)
-    #     return(-res)
-    #   }
-    # },
-    #
     repdict_log = function(){
       cat("GPR: Prediction has been done. you can check the result through '$testing'.", "\n")
       cat("     Kernel function: ", private$kernel_fun, "\n", sep = "")
