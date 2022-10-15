@@ -605,7 +605,7 @@ GPR <- R6::R6Class(
         cat("L-BFGS-B | iter = ", time, " | parameters: ", "\n" ,sep = "")
         print(x)
         cat("\n")
-        -res
+        -res      # BFGS method finds a minimum, but we want a maximum of likelihood.
       }
     },
     repdict_log = function(){
