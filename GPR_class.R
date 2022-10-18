@@ -78,7 +78,7 @@ GPR <- R6::R6Class(
       }
       # Calculate mesh of unobserved points
       mesh_ex <- dplyr::filter(depth,!(x %in% depth_raw$x)) |> 
-        as.list()|>
+        as.list() |>
         rlang::set_names(NULL) |>
         purrr::pmap_dfr(function(dis, min, max){
           value <- seq(min, max, by = size_v_ex)
@@ -235,6 +235,7 @@ GPR <- R6::R6Class(
     },
     plot_silent = function(logic){
         private$silent <- logic
+        invisible(self)
     }
   ),
   #
@@ -463,7 +464,7 @@ GPR <- R6::R6Class(
                                     font_family = 'Times New Roman',font_size = 30, width = 1200 , height = 600){
       #
       DAT <- interp::interp(x = data$x, y = data$z, z = data$nsws, 
-                            nx = 200, ny = 50, method="linear")
+                            nx = max(self$n_sws$x), ny = 40, method="linear")
       DAT$z <- t(DAT$z)
       #
       fig_arguments <- list(
@@ -557,7 +558,7 @@ GPR <- R6::R6Class(
       k11_t <- k11_t/k11_r_pivot
       k11_r <- k11_r/k11_r_pivot
       k11 <- k11_t + k11_r
-      k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.1)
+      k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.2)
       f <- -0.5 * t(private$z) %*% ginv(k11*k11_r_pivot) %*% private$z - 
         0.5 *(log(k11_r_pivot) * nrow(k11)+ log(det(k11))) + private$thirdterm
       # f <- -f
@@ -605,7 +606,7 @@ GPR <- R6::R6Class(
         cat("L-BFGS-B | iter = ", time, " | parameters: ", "\n" ,sep = "")
         print(x)
         cat("\n")
-        -res      # BFGS method finds a minimum, but we want a maximum of likelihood.
+        -res      # BFGS method finds a minimum, but we want the maximum of likelihood.
       }
     },
     repdict_log = function(){
