@@ -1,4 +1,3 @@
-library(MASS)
 library(GA)
 library(doParallel)
 library(foreach)
@@ -66,7 +65,7 @@ GPR <- R6::R6Class(
         private$whether_contour <- FALSE
       }
       #  Calculate the mean of interval on the vertical. 
-      #  It will be used for unobserved points when user do not assign a vertical mesh size.
+      #  It will be used for unobserved points when users do not assign a vertical mesh size.
       if (size_v <= 0 & size_h > 0) {
         size_v_ex <- self$n_sws |> dplyr::group_by(x) |> 
           dplyr::summarise(dif= diff(z) %>% mean()) |>
@@ -97,7 +96,7 @@ GPR <- R6::R6Class(
         })|>
         dplyr::mutate(y=0)
       # bind the 2 kinds of meshes.
-      self$testing <- bind_rows(mesh_raw, mesh_ex) |> 
+      self$testing <- dplyr::bind_rows(mesh_raw, mesh_ex) |> 
         dplyr::arrange(x,z)
       #
       private$whether_mesh <- TRUE
@@ -559,7 +558,7 @@ GPR <- R6::R6Class(
       k11_r <- k11_r/k11_r_pivot
       k11 <- k11_t + k11_r
       k11 <- `diag<-`(k11, diag(k11) + k11[1,1]*0.2)
-      f <- -0.5 * t(private$z) %*% ginv(k11*k11_r_pivot) %*% private$z - 
+      f <- -0.5 * t(private$z) %*% MASS::ginv(k11*k11_r_pivot) %*% private$z - 
         0.5 *(log(k11_r_pivot) * nrow(k11)+ log(det(k11))) + private$thirdterm
       # f <- -f
       f <- as.numeric(f)
