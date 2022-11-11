@@ -1,6 +1,6 @@
 source("GPR_class.R")
 神ノ子池 <- GPR$new("kaminokoike_SWS.dat")
-神ノ子池$create_mesh()
+神ノ子池$create_mesh(size_v = 0.25, size_h = 10)
 神ノ子池$set_parameter(sof_h_t = 23.840455, sof_v_t = 6.672777, sd_t = 2, 
                 sof_h_r = 72.307987, sof_v_r = 6.418074, sd_r = 2,
                 nu = 5.949964)

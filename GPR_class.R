@@ -6,6 +6,7 @@ library(R6)
 library(tidyverse)
 library(plotly)
 library(interp)
+library(MASS)
 #
 # How to use: 
 # 'new("file name")' -> 'set_parameter' or 'set_par_scope'  -> 'create_mesh'
@@ -45,62 +46,12 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     #
-    create_mesh = function(size_v = 0, size_h = 0){
-      # if "size_v" <= 0 and 
-      # Prepare testing data (mesh).
-      depth_raw <- self$n_sws |> 
-        dplyr::group_by(x) |> 
-        dplyr::summarise(min_depth = min(z), max_depth = max(z)) |>
-        dplyr::ungroup() |>
-        dplyr::arrange(x)
-      # Calculate the unobserved points according to the "size_h" argument.
-      x_denser <- private$divide_KP(points = depth_raw$x, size = size_h)
-      depth <- data.frame(x = x_denser,
-                          min = private$lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
-                          max = private$lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
-      # Determine the default type of result figure.
-      if (nrow(depth) > nrow(depth_raw)) {
-        private$whether_contour <- TRUE
-      }else{
-        private$whether_contour <- FALSE
-      }
-      #  Calculate the mean of interval on the vertical. 
-      #  It will be used for unobserved points when users do not assign a vertical mesh size.
-      if (size_v <= 0 & size_h > 0) {
-        size_v_ex <- self$n_sws |> dplyr::group_by(x) |> 
-          dplyr::summarise(dif= diff(z) %>% mean()) |>
-          dplyr::ungroup() |>
-          dplyr::select(dif) |>
-          unlist() |> mean()
-      }else{
-        size_v_ex <- size_v
-      }
-      # Calculate mesh of unobserved points
-      mesh_ex <- dplyr::filter(depth,!(x %in% depth_raw$x)) |> 
-        as.list() |>
-        rlang::set_names(NULL) |>
-        purrr::pmap_dfr(function(dis, min, max){
-          value <- seq(min, max, by = size_v_ex)
-          len <- length(value)
-          tibble::tibble(x = rep(dis,times = len), z = value)
-        }) |>
-        dplyr::mutate(y=0)
-      # Create mesh of observed points.
-      mesh_raw <- list(x= depth_raw$x, kp_z = split(self$n_sws$z, self$n_sws$x)) |> 
-        rlang::set_names(NULL) |>
-        purrr::pmap_dfr(function(dis, kp){
-          kp <- unlist(kp)
-          value <- private$divide_KP(points = kp, size = size_v)
-          len <- length(value)
-          tibble::tibble(x = rep(dis, times = len), z = value)
-        })|>
-        dplyr::mutate(y=0)
-      # bind the 2 kinds of meshes.
-      self$testing <- dplyr::bind_rows(mesh_raw, mesh_ex) |> 
-        dplyr::arrange(x,z)
-      #
+    create_mesh = function(size_v = 0, size_h = 0, silent = FALSE){
+      self$testing <- private$mesh_data(size_v = size_v, size_h = size_h)
       private$whether_mesh <- TRUE
-      cat("GPR: Mesh has been created.", "\n")
+      if(!silent){
+        cat("GPR: Mesh has been created.", "\n")
+      }
       invisible(self)
     },
     #
@@ -235,6 +186,11 @@ GPR <- R6::R6Class(
     plot_silent = function(logic){
         private$silent <- logic
         invisible(self)
+    },
+    # Methods for SGSIM.
+    normlize = function(){
+      sd <- self$para["sd_t"]
+      
     }
   ),
   #
@@ -269,7 +225,7 @@ GPR <- R6::R6Class(
     ######################### Pure Functions ##############################
     # Read data from a file. 
     read_MAIC = function(file_name){
-      rawdat<-read.csv(file = file_name) #カンマ区切りのファイルを読み込む(他の書式はMAICの入力fileと同じ)　
+      rawdat<-read.csv(file = file_name) 
       colnames(rawdat)<-c("z","nsws")
       point_num<-rawdat[1,1]
       #
@@ -412,7 +368,63 @@ GPR <- R6::R6Class(
       new_y <- interp_f(new_x)
       return(new_y)
     },
-    ####################### End of pure functions ##############################
+    ####################### End of pure functions #########################
+    # 
+    mesh_data = function(size_v, size_h){
+   # Prepare testing data (mesh).
+      depth_raw <- self$n_sws |> 
+        dplyr::group_by(x) |> 
+        dplyr::summarise(min_depth = min(z), max_depth = max(z)) |>
+        dplyr::ungroup() |>
+        dplyr::arrange(x)
+      # Calculate the unobserved points according to the "size_h" argument.
+      x_denser <- private$divide_KP(points = depth_raw$x, size = size_h)
+      depth <- data.frame(x = x_denser,
+                          min = private$lerp(depth_raw$x, depth_raw$min_depth, new_x = x_denser),
+                          max = private$lerp(depth_raw$x, depth_raw$max_depth, new_x = x_denser))
+      # Determine the default type of result figure.
+      if (nrow(depth) > nrow(depth_raw)) {
+        private$whether_contour <- TRUE
+      }else{
+        private$whether_contour <- FALSE
+      }
+      #  Calculate the mean of interval on the vertical. 
+      #  It will be used for unobserved points when users do not assign a vertical mesh size.
+      if (size_v <= 0 & size_h > 0) {
+        size_v_ex <- self$n_sws |> dplyr::group_by(x) |> 
+          dplyr::summarise(dif= diff(z) %>% mean()) |>
+          dplyr::ungroup() |>
+          dplyr::select(dif) |>
+          unlist() |> mean()
+      }else{
+        size_v_ex <- size_v
+      }
+      # Calculate mesh of unobserved points
+      mesh_ex <- dplyr::filter(depth,!(x %in% depth_raw$x)) |> 
+        as.list() |>
+        rlang::set_names(NULL) |>
+        purrr::pmap_dfr(function(dis, min, max){
+          value <- seq(min, max, by = size_v_ex)
+          len <- length(value)
+          tibble::tibble(x = rep(dis,times = len), z = value)
+        }) |>
+        dplyr::mutate(y=0)
+      # Create mesh of observed points.
+      mesh_raw <- list(x= depth_raw$x, kp_z = split(self$n_sws$z, self$n_sws$x)) |> 
+        rlang::set_names(NULL) |>
+        purrr::pmap_dfr(function(dis, kp){
+          kp <- unlist(kp)
+          value <- private$divide_KP(points = kp, size = size_v)
+          len <- length(value)
+          tibble::tibble(x = rep(dis, times = len), z = value)
+        })|>
+        dplyr::mutate(y=0)
+      # bind the 2 kinds of meshes.
+      testing_mesh <- dplyr::bind_rows(mesh_raw, mesh_ex) |> 
+        dplyr::arrange(x,z)
+      #
+      return(testing_mesh)
+    },
     #
     check_predict = function(){
      if(purrr::some(self$para, is.na)){
@@ -438,10 +450,10 @@ GPR <- R6::R6Class(
     #
     plot_raw = function(){
       self$raw_pic = ggplot2::ggplot(data=self$n_sws)+
-        geom_point(mapping = aes(x=nsws,y=z))+
-        geom_line(mapping = aes(x=nsws,y=z),orientation = "y")+
-        scale_y_reverse()+
-        facet_wrap(~x, nrow = 2)
+        ggplot2::geom_point(mapping = aes(x=nsws,y=z))+
+        ggplot2::geom_line(mapping = aes(x=nsws,y=z),orientation = "y")+
+        ggplot2::scale_y_reverse()+
+        ggplot2::facet_wrap(~x, nrow = 2)
       if (!private$silent) {
         print(self$raw_pic)
       }
