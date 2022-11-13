@@ -19,9 +19,11 @@ GPR <- R6::R6Class(
     ## Data
     n_sws = NA,
     testing = NA,
+    normalized_n = NULL,
     ## Fig objects
     raw_pic = NA,
     test_pic = NA,
+    norm_pic = NA,
     ## opt result
     result_ga = NULL,
     result_BFGS = NULL,
@@ -46,13 +48,31 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     #
-    create_mesh = function(size_v = 0, size_h = 0, silent = FALSE){
+    create_mesh = function(size_v = private$mesh_size_v, 
+                           size_h = private$mesh_size_h, 
+                           rigid = FALSE, from_zero = FALSE, silent = FALSE){
+      if (rigid) {
+        grDevices::dev.off()
+        self$n_sws <- private$rigidify(dat = private$raw_n_sws, size_v = size_v, 
+                                       from_zero = from_zero)
+        private$plot_raw()
+        private$whether_rigid <- TRUE
+      }else{
+        self$n_sws <- private$raw_n_sws
+      }
       self$testing <- private$mesh_data(size_v = size_v, size_h = size_h)
       private$whether_mesh <- TRUE
       if(!silent){
         cat("GPR: Mesh has been created.", "\n")
+        if (rigid) {
+        cat("     Using rigid mode, the depth of data may be modified.", "\n")
+        }
       }
       invisible(self)
+    },
+    set_mesh_size = function(size_v, size_h){
+      private$mesh_size_v <- size_v
+      private$mesh_size_h <- size_h
     },
     #
     set_kernel = function(fun_name){
@@ -156,6 +176,8 @@ GPR <- R6::R6Class(
       self$plot_predict()
       # output log on screen.
       private$repdict_log()
+      #
+      private$whether_predict <- TRUE
       invisible(self)
     },
     opt = function(mode = "GA"){
@@ -176,6 +198,7 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     plot_predict = function(...){
+      grDevices::dev.off()
       if (private$whether_contour) {
         private$plot_predict_contour(data = self$testing, ...)
       }else{
@@ -189,8 +212,23 @@ GPR <- R6::R6Class(
     },
     # Methods for SGSIM.
     normlize = function(){
+      if (!private$whether_predict) {
+        cat("GPR: Please predict first")
+      }
       sd <- self$para["sd_t"]
-      
+      self$normalized_n <- private$make_norm(dat = self$n_sws, 
+                                             trend = self$testing, sd0 = sd)
+      private$plot_norm()
+      invisible(self)
+    },
+    make_sgsim_file = function(flname, dat = self$normalized_n, dig = 6,
+                               fltital = "kaminokoike"){
+      infoout <- data.frame(X=c(fltital, 3, "x"), Z=c("","","z"), N=c("","","N"))
+      dataout <- data.frame(X = dat$x, z = dat$z, N = round(dat$nsws, digits = dig))
+      write.table(infoout,file = flname,sep = "           ",
+                  col.names=FALSE,row.names = FALSE,quote = FALSE)
+      write.table(dataout,file = flname,sep = "           ",
+                  col.names=FALSE,row.names = FALSE,quote = FALSE,append = TRUE)
     }
   ),
   #
@@ -198,6 +236,8 @@ GPR <- R6::R6Class(
     kernel_fun = "kernel_g",
     raw_n_sws = NULL,
     limit_x = c(-1,200),
+    mesh_size_v = 0,
+    mesh_size_h = 0,
     sof_h_t = NA,
     sof_v_t = NA,
     sd_t = NA,
@@ -221,6 +261,8 @@ GPR <- R6::R6Class(
     whether_set_scope = FALSE,
     whether_contour = FALSE,
     whether_opt = 0, 
+    whether_predict = FALSE,
+    whether_rigid = FALSE,
     silent = FALSE,
     ######################### Pure Functions ##############################
     # Read data from a file. 
@@ -249,6 +291,23 @@ GPR <- R6::R6Class(
       #
       rawdat <- rawdat |> dplyr::mutate(x = distance_index)
       dplyr::filter(rawdat, !is.na(x))
+    },
+    # Make rigid data.
+    rigidify = function(dat = self$n_sws, size_v, from_zero){
+      # Rigidify the vertical axis ("z") of input data.
+      if(size_v <= 0){
+        size_v <- dplyr::group_by(dat, x) |> 
+          summarise(dif = z %>% diff() %>% abs() %>% mean()) |> 
+          dplyr::select(dif) |> unlist() |> mean()
+        dplyr::ungroup(dat)
+      }
+      dat <- dplyr::group_by(dat, x) |> 
+        dplyr::mutate(z = size_v*(1:length(x))) 
+      if (from_zero) {
+        dat <- dat |> dplyr::mutate(z = z - size_v)
+      }
+      dplyr::ungroup(dat)
+      return(dat)
     },
     # Kernel functions
     kernel_g = function(d,sof,sd){
@@ -368,6 +427,11 @@ GPR <- R6::R6Class(
       new_y <- interp_f(new_x)
       return(new_y)
     },
+    find_n = function(df, x, z){
+      # Find N value from x and z coordinates.
+      indx <- which(df$x == x & df$z == z)
+      return(df$nsws[indx])
+    },
     ####################### End of pure functions #########################
     # 
     mesh_data = function(size_v, size_h){
@@ -449,14 +513,23 @@ GPR <- R6::R6Class(
     # ------ plotting functions ------
     #
     plot_raw = function(){
-      self$raw_pic = ggplot2::ggplot(data=self$n_sws)+
+      self$raw_pic = private$plot_points(dat = self$n_sws)
+      if (!private$silent) {
+        print(self$raw_pic)
+      }
+    },
+    plot_norm = function(){
+      self$norm_pic = private$plot_points(dat = self$normalized_n)
+      if (!private$silent) {
+        print(self$norm_pic)
+      }
+    },
+    plot_points = function(dat){
+      fig = ggplot2::ggplot(data = dat)+
         ggplot2::geom_point(mapping = aes(x=nsws,y=z))+
         ggplot2::geom_line(mapping = aes(x=nsws,y=z),orientation = "y")+
         ggplot2::scale_y_reverse()+
         ggplot2::facet_wrap(~x, nrow = 2)
-      if (!private$silent) {
-        print(self$raw_pic)
-      }
     },
     #
     plot_predict_line = function(nrow = 2){
@@ -625,6 +698,15 @@ GPR <- R6::R6Class(
       cat("     Kernel function: ", private$kernel_fun, "\n", sep = "")
       cat("     Parameters: ", "\n", sep = "")
       print(self$para)
-    }
+    },
+   make_norm = function(dat, trend, sd0){
+     len_dat <- unlist(dat$z) |> length()
+     # compute the normalized N_sws
+     for (i in seq_len(len_dat)){
+       one_sample <- private$find_n(df = trend, x = dat$x[i], z = dat$z[i])
+       dat$nsws[i] <- abs(one_sample - dat$nsws[i])/sd0
+     }
+     return(dat)
+   }
   )
 )
