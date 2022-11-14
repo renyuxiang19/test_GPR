@@ -1,0 +1,26 @@
+ Data for SGSIM: Variable number            3
+   Number of acceptable data  =          290
+   Equal Weighted Average     =   -3.17754893E-04
+   Equal Weighted Variance    =    3.82879446E-03
+
+ Covariance Look up table and search for previously
+ simulated grid nodes.  The maximum range in each 
+ coordinate direction for covariance look up is:
+           X direction:    64.0000000    
+           Y direction:    25.0000000    
+           Z direction:    0.00000000    
+ Node Values are not searched beyond this distance!
+
+
+ There are         2431  nearby nodes that will be 
+ checked until enough close data are found.
+
+
+ The random number generator to generate the path:
+         r(i) = 5*r(i-1)+1 mod         4096
+
+ Finished SGSIM: simulated results in Sgsim result.dat                        
+                 debugging output in  sgsim.dbg                               
+                 transformation table sgsim.trn                               
+
+

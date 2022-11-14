@@ -50,9 +50,9 @@ GPR <- R6::R6Class(
     #
     create_mesh = function(size_v = private$mesh_size_v, 
                            size_h = private$mesh_size_h, 
-                           rigid = FALSE, from_zero = FALSE, silent = FALSE){
+                           rigid = TRUE, from_zero = TRUE, silent = FALSE){
       if (rigid) {
-        grDevices::dev.off()
+        #grDevices::dev.off()
         self$n_sws <- private$rigidify(dat = private$raw_n_sws, size_v = size_v, 
                                        from_zero = from_zero)
         private$plot_raw()
@@ -73,6 +73,8 @@ GPR <- R6::R6Class(
     set_mesh_size = function(size_v, size_h){
       private$mesh_size_v <- size_v
       private$mesh_size_h <- size_h
+      cat("GPR: Mesh size has been set. | Vertical: ", private$mesh_size_v, 
+          " | Horizontal: ", private$mesh_size_h, "\n", sep = "")
     },
     #
     set_kernel = function(fun_name){
@@ -191,6 +193,9 @@ GPR <- R6::R6Class(
               GA = private$opt_ga(lower = private$lower, upper = private$upper, func = private$ln_likelihood)
       )
       cat("GPR: Parameters have been optimized.", "\n")
+      # update 
+      private$sd_t <- self$para["sd_t"]
+      private$sd_r <- self$para["sd_r"]
       invisible(self)
     },
     set_plot_lines = function(L = TRUE){
@@ -198,9 +203,13 @@ GPR <- R6::R6Class(
       invisible(self)
     },
     plot_predict = function(...){
-      grDevices::dev.off()
+      #grDevices::dev.off()
       if (private$whether_contour) {
-        private$plot_predict_contour(data = self$testing, ...)
+        dat <- interp::interp(x = self$testing$x, y = self$testing$z, 
+                              z = self$testing$nsws, 
+                              nx = (max(self$n_sws$x)-min(self$n_sws$x)), 
+                              ny = 40, method="linear")
+        self$test_pic <- private$plot_contour(data = dat, min_z = 0, ...)
       }else{
         private$plot_predict_line(...)
       }
@@ -215,7 +224,7 @@ GPR <- R6::R6Class(
       if (!private$whether_predict) {
         cat("GPR: Please predict first")
       }
-      sd <- self$para["sd_t"]
+      sd <- private$sd_r
       self$normalized_n <- private$make_norm(dat = self$n_sws, 
                                              trend = self$testing, sd0 = sd)
       private$plot_norm()
@@ -544,11 +553,11 @@ GPR <- R6::R6Class(
       }
     },
     #
-    plot_predict_contour = function(data, TitleColorbar, TitleX, TitleY, begin_X, max_Z,
-                                    font_family = 'Times New Roman',font_size = 30, width = 1200 , height = 600){
+    plot_contour = function(data, TitleColorbar, TitleX, TitleY, begin_X, max_z,
+                            min_z,font_family = 'Times New Roman',
+                            font_size = 30, width = 1200 , height = 600){
       #
-      DAT <- interp::interp(x = data$x, y = data$z, z = data$nsws, 
-                            nx = max(self$n_sws$x), ny = 40, method="linear")
+      DAT <- data
       DAT$z <- t(DAT$z)
       #
       fig_arguments <- list(
@@ -571,8 +580,10 @@ GPR <- R6::R6Class(
       DAT$x<-DAT$x+shif_X
       X_min<-min(DAT$x)
       # range of Z axes
-      if(missing(max_Z)) max_Z <- max(DAT$z)
-      Z_max <- max_Z
+      if(missing(max_z)) max_z <- max(DAT$z)
+      if(missing(min_z)) min_z <- min(DAT$z)
+      Z_max <- max_z
+      Z_min <- min_z
       #
       fig <- plot_ly(
         type = 'contour',
@@ -582,9 +593,9 @@ GPR <- R6::R6Class(
         autocontour = F,
         colorscale= list(c(0, 0.33,0.66, 1), c('#FF0000', '#FFFB00', '#339502', '#023AB2')),
         contours = list(
-          start = 0,
+          start = Z_min,
           end = Z_max,
-          size = Z_max/10,
+          size = (Z_max-Z_min)/10,
           showlines = FALSE
         ),
         colorbar=list(
@@ -620,12 +631,13 @@ GPR <- R6::R6Class(
         tickwidth = 1,
         range = c(Y_max,0)
       )
-      self$test_pic <- fig %>% layout(xaxis = x, yaxis = y,
-                                      font = list(family = font_family ,size= font_size))
+      fig <- fig %>% layout(xaxis = x, yaxis = y,
+                            font = list(family = font_family ,size= font_size))
       #
       if (!private$silent) {
-        self$test_pic |> print()
+        fig |> print()
       }
+      return(fig)
     },
     # ------ optimizing functions ------
     prepare_likelihood = function(){
@@ -704,9 +716,130 @@ GPR <- R6::R6Class(
      # compute the normalized N_sws
      for (i in seq_len(len_dat)){
        one_sample <- private$find_n(df = trend, x = dat$x[i], z = dat$z[i])
-       dat$nsws[i] <- abs(one_sample - dat$nsws[i])/sd0
+       dat$nsws[i] <- (one_sample - dat$nsws[i])/sd0
      }
      return(dat)
    }
   )
+)
+
+#
+GPRSG <- R6::R6Class(
+  inherit  = GPR,
+  public = list(
+    sgs = NULL,
+    #
+    set_sgs_mesh = function(nx, ny , dx, dy, num_sim, members){
+      private$nx <- nx
+      private$ny <- ny
+      private$dx <- dx
+      private$dy <- dy
+      private$num_sim <- num_sim
+      private$members <- members
+      invisible(self)
+    },
+    #
+    read_sgs = function(flname, nsim = private$num_sim, nx = private$nx, 
+                        ny = private$ny, dy = private$dy , nen = private$members, 
+                        nhl = 3){
+      # nhl: number of headers lines of result file.
+      nd<-nx*ny
+      simval<-read_delim(file = flname, delim = "/n",col_names = FALSE,
+                         show_col_types = FALSE)
+      colnames(simval)<-c("V1")
+      #check the result file
+      if(nsim*nd+nhl!=length(simval$V1)){
+        stop("The number of result can not match this project, 
+            please check the result file or project parameters")
+      }
+      E_sgsim<-data.frame(x=rep(1:nx,ny),z=rep(seq(0,by=dy,length=ny),each=nx))
+      localdata<-data.frame(x=rep(1:nx,ny),z=rep(seq(0,by=dy,length=ny),each=nx))
+      eout<-numeric(length = nd)
+      for (ii in 1:(nen-1)) {
+        E_sgsim<-rbind(E_sgsim,localdata)
+      }
+      for (i in 0:(nen-1)) {
+        if(i==0){
+          eout<-as.numeric(simval$V1[(nhl+i*nd+1):(nhl+i*nd+nd)])
+        }else{
+          eout<-c(eout,as.numeric(simval$V1[(nhl+i*nd+1):(nhl+i*nd+nd)]))
+        }
+      }
+      E_sgsim <- E_sgsim |> 
+        dplyr::mutate(
+          rc = eout,
+          indx = rep(1:nen, each = nd),
+          x = x - 1
+        )
+      # E_sgsim$rc <- eout
+      # E_sgsim$indx <- rep(1:nen, each = nd)
+      self$sgs <- E_sgsim
+      invisible(self)
+    },
+    #
+    denormalize = function(){
+      if (private$denormalized) {
+        stop("ERROR: GPRSG: No need to denormalize once more.")
+      }
+      self$sgs <- private$denormalize_sgs(trend = self$testing, 
+                                          random = self$sgs, 
+                                          sd0 = private$sd_r)
+      private$denormalized <- TRUE
+      invisible(self)
+    },
+    #
+    plot_sgs_sample = function(number, ...){
+      dat <- self$sgs |>
+        dplyr::filter(indx == number)
+      dat <- interp::interp(x = dat$x, y = dat$z, 
+                            z = dat$rc, 
+                            nx = private$nx, ny = private$ny, method="linear")
+      private$plot_contour(data = dat, TitleColorbar = "RC", ...)
+      invisible(self)
+    },
+    plot_sgs_member = function(number, ...){
+      dat <- self$sgs |>
+        dplyr::filter(indx == number)
+      dat <- interp::interp(x = dat$x, y = dat$z, 
+                            z = dat$nsws, 
+                            nx = private$nx, ny = private$ny, method="linear")
+      private$plot_contour(data = dat, TitleColorbar = "N", ...)
+      invisible(self)
+    },
+    take_exp = function(){
+      self$sgs$nsws <- 10^(self$sgs$nsws)
+    }
+  ),
+  private = list(
+    nx = NULL,
+    ny = NULL,
+    dx = NULL,
+    dy = NULL,
+    num_sim = NULL,
+    members = NULL,
+    denormalized = FALSE,
+    #
+    denormalize_sgs = function(trend, random, sd0){
+      edge_value <- trend |> 
+        dplyr::group_by(x) |>
+        dplyr::summarise(z = tail(z,1), nsws = tail(nsws,1))
+      random <- random |> dplyr::mutate(nsws = 0)
+      #
+      len_sgs <- nrow(random)
+      
+      for (i in 1:len_sgs) {
+        xx <- random$x[i]
+        zz <- random$z[i]
+        x_index <- which(edge_value$x == xx)
+        z_edge <- edge_value$z[x_index]
+        if (zz >= z_edge ) {
+          random$nsws[i] <- edge_value$nsws[x_index] + random$rc[i] * sd0
+        }else{
+          random$nsws[i] <- private$find_n(trend, xx, zz) + random$rc[i] * sd0
+        }
+      }
+      return(random)
+    }
+  )
+  
 )
