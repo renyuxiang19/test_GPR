@@ -1,6 +1,6 @@
 source("GPR_class.R")
 神の子池 <- GPRSG$new("kaminokoike_SWS.dat")
-神の子池$set_mesh_size(size_v = 0.25, size_h = 1)
+神の子池$set_mesh_size(size_v = 0, size_h = 0)
 神の子池$create_mesh(rigid = TRUE, from_zero = TRUE)
 神の子池$set_parameter(sof_h_t = 23.840455, sof_v_t = 6.672777, sd_t = 2, 
                 sof_h_r = 72.307987, sof_v_r = 6.418074, sd_r = 0.5,
