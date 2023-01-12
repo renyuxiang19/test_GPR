@@ -173,7 +173,7 @@ GPR <- R6::R6Class(
       }
       # predict
       self$testing <- dplyr::mutate(self$testing,
-                                    nsws = {k21 %*% ginv(k11) %*% self$n_sws$nsws} |> as.vector())
+                                    nsws = {k21 %*% MASS::ginv(k11) %*% self$n_sws$nsws} |> as.vector())
       # plot
       self$plot_predict()
       # output log on screen.
